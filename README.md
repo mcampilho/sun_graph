@@ -8,7 +8,7 @@ position relate to each other:
 | Script | Output |
 |---|---|
 | [`solar_graph.py`](#solar_graphpy--yearly-sunlight-graph) | Yearly sunlight graph for any place: day, twilights, night, solar noon and midnight |
-| [`solar_time_map.py`](#solar_time_mappy--solar-time-vs-official-time) | World map of the difference between solar time and official (clock) time |
+| [`solar_time_map.py`](#solar_time_mappy--solar-time-vs-official-time) | World map of the difference between solar time and official (clock) time, or a plain time-zone map |
 | [`earth_moon_sun.py`](#earth_moon_sunpy--earth--moon--sun-animation) | Animated video: Earth's rotation, the Moon's phases and eclipses, the seasons |
 
 All texts in the images can be produced in English or Portuguese (the map also
@@ -133,17 +133,34 @@ python solar_time_map.py -p mercator --date 2026-07-01      # summer time in for
 python solar_time_map.py -p miller --output miller.png --no-names
 ```
 
+### Plain time-zone map
+
+![World map of the time zones](images/time_zones_map_en.png)
+
+`--mode zones` draws a classic time-zone map instead: one pastel colour per
+UTC offset (half and quarter hours have colours of their own), paler colours
+over the open sea, and the places that use daylight saving time hatched. With
+`--date` the map shows the offsets in force on that day, and the hatching
+marks where daylight saving time is in force. All other options work as
+above (`--limit` only applies to the solar map).
+
+```bash
+python solar_time_map.py --mode zones -p miller             # time_zones_map.png
+python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
+```
+
 | Option | Meaning |
 |---|---|
+| `--mode`, `-m` | `solar` (default: solar time − official time) or `zones` (time-zone map) |
 | `--projection`, `-p` | `equal-earth` (default), `robinson`, `miller`, `mercator` |
 | `--lang`, `-l` | `en`, `pt`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ar` (`--list-langs` lists them) |
 | `--date YYYY-MM-DD` | Use the legal time of that day (daylight saving included) |
-| `--limit` | Difference in hours shown with the strongest colour (default 2) |
+| `--limit` | Difference in hours shown with the strongest colour (default 2; solar map only) |
 | `--sea-margin` | How far (degrees) each time zone extends into the sea (default 1.5) |
 | `--res` | Grid resolution in degrees (default 0.1) |
 | `--simplify` | Polygon simplification tolerance in degrees (default 0.02) |
 | `--no-names` | Hide country names |
-| `--output`, `-o` | Output file (default `solar_time_map.png`) |
+| `--output`, `-o` | Output file (default `solar_time_map.png`, or `time_zones_map.png` with `--mode zones`) |
 | `--show` | Also open a window |
 | `--cache` | Folder for the downloaded data |
 

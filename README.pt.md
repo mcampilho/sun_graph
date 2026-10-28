@@ -8,7 +8,7 @@ os relógios e a posição do Sol:
 | Script | Resultado |
 |---|---|
 | [`solar_graph.py`](#solar_graphpy--gráfico-anual-de-luz-solar) | Gráfico anual de luz solar de qualquer local: dia, crepúsculos, noite, meio-dia e meia-noite solares |
-| [`solar_time_map.py`](#solar_time_mappy--hora-solar-vs-hora-oficial) | Mapa-múndi da diferença entre a hora solar e a hora oficial (a do relógio) |
+| [`solar_time_map.py`](#solar_time_mappy--hora-solar-vs-hora-oficial) | Mapa-múndi da diferença entre a hora solar e a hora oficial (a do relógio), ou dos fusos horários |
 | [`earth_moon_sun.py`](#earth_moon_sunpy--animação-terra--lua--sol) | Vídeo animado: rotação da Terra, fases e eclipses da Lua, estações do ano |
 
 Todos os textos das imagens podem sair em português ou inglês (o mapa também
@@ -135,17 +135,34 @@ python solar_time_map.py -p mercator --date 2026-07-01 --lang pt   # com hora de
 python solar_time_map.py -p miller --output miller.png --no-names
 ```
 
+### Mapa dos fusos horários
+
+![Mapa-múndi dos fusos horários](images/time_zones_map_pt.png)
+
+`--mode zones` desenha antes um mapa clássico dos fusos horários: uma cor
+pastel por desvio UTC (as meias horas e os quartos de hora têm cores
+próprias), cores mais claras no mar alto e, riscados, os locais com hora de
+verão. Com `--date`, o mapa mostra os desvios em vigor nesse dia e o riscado
+marca onde a hora de verão está em vigor. As outras opções funcionam como
+acima (`--limit` só se aplica ao mapa da hora solar).
+
+```bash
+python solar_time_map.py --mode zones -p miller --lang pt   # time_zones_map.png
+python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
+```
+
 | Opção | Significado |
 |---|---|
+| `--mode`, `-m` | `solar` (por omissão: hora solar − hora oficial) ou `zones` (mapa dos fusos) |
 | `--projection`, `-p` | `equal-earth` (por omissão), `robinson`, `miller`, `mercator` |
 | `--lang`, `-l` | `en`, `pt`, `es`, `fr`, `de`, `it`, `ru`, `zh`, `ja`, `ar` (`--list-langs` mostra a lista) |
 | `--date AAAA-MM-DD` | Usa a hora legal desse dia (com hora de verão) |
-| `--limit` | Diferença em horas mostrada com a cor mais intensa (por omissão 2) |
+| `--limit` | Diferença em horas mostrada com a cor mais intensa (por omissão 2; só no mapa da hora solar) |
 | `--sea-margin` | Quanto (em graus) cada fuso se prolonga para o mar (por omissão 1,5) |
 | `--res` | Resolução da grelha em graus (por omissão 0,1) |
 | `--simplify` | Tolerância de simplificação dos polígonos em graus (por omissão 0,02) |
 | `--no-names` | Esconde os nomes dos países |
-| `--output`, `-o` | Ficheiro de saída (por omissão `solar_time_map.png`) |
+| `--output`, `-o` | Ficheiro de saída (por omissão `solar_time_map.png`, ou `time_zones_map.png` com `--mode zones`) |
 | `--show` | Abre também uma janela |
 | `--cache` | Pasta para os dados descarregados |
 

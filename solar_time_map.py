@@ -13,6 +13,10 @@ World map of the difference between (mean) solar time and official time.
 The colour is computed point by point from the longitude, so it changes
 smoothly inside each country or time zone.
 
+With --mode zones it draws a plain time-zone map instead: one pastel colour
+per UTC offset (paler over the open sea), places with daylight saving time
+hatched.
+
 Map texts and country names follow the system language by default, or the
 language given with --lang. Supported: en, pt (European Portuguese), es, fr,
 de, it, ru, zh, ja, ar.
@@ -32,6 +36,7 @@ Examples:
     python solar_time_map.py --projection robinson --lang pt
     python solar_time_map.py -p mercator --date 2026-07-01 --lang de
     python solar_time_map.py -p miller --output miller.png --no-names
+    python solar_time_map.py --mode zones -p miller --lang pt  # time-zone map
 """
 
 import argparse
@@ -49,6 +54,7 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.colors import LinearSegmentedColormap
+import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
 
 import geopandas as gpd
@@ -87,6 +93,14 @@ ZONE_LINE_COLOR = "#9a5b2e"
 BORDER_COLOR = "#8c8c8c"
 ANTARCTICA_COLOR = "#eef0f1"
 
+# --mode zones: one pastel colour per whole UTC offset (cycling, so neighbouring
+# zones always differ), others for half and quarter hours; the open sea is paler
+ZONE_COLORS = ["#f3cf9c", "#eba882", "#bfd497", "#a9c0cc"]
+ZONE_HALF_COLOR = "#c8acd9"
+ZONE_QUARTER_COLOR = "#e8a9c4"
+SEA_PALENESS = 0.55            # how much the sea colours are mixed with white
+HATCH_COLOR = "#7a5a46"
+
 # ----------------------------------------------------------------------------
 # Translations
 # ----------------------------------------------------------------------------
@@ -109,6 +123,11 @@ TEXTS = {
         "raster": "Rasterising time zones and land ...",
         "merging": "Merging time zones by UTC offset ...",
         "saved": "Map saved to {path}",
+        "title_zones": "Time zones of the world — {proj} projection",
+        "subtitle_zones": "UTC offset of the official time: {mode}.",
+        "dst_std": "Hatched: places that use daylight saving time",
+        "dst_date": "Hatched: daylight saving time in force on {date}",
+        "sea": "Paler colours: open sea (nautical time zones, 15° strips)",
     },
     "pt": {
         "language": "Português (Portugal)",
@@ -126,6 +145,11 @@ TEXTS = {
         "raster": "A rasterizar fusos e terra ...",
         "merging": "A unir fusos por desvio horário ...",
         "saved": "Mapa guardado em {path}",
+        "title_zones": "Fusos horários do mundo — projeção {proj}",
+        "subtitle_zones": "Desvio UTC da hora oficial: {mode}.",
+        "dst_std": "Riscado: locais com hora de verão",
+        "dst_date": "Riscado: hora de verão em vigor em {date}",
+        "sea": "Cores mais claras: mar alto (fusos náuticos, faixas de 15°)",
     },
     "es": {
         "language": "Español",
@@ -143,6 +167,11 @@ TEXTS = {
         "raster": "Rasterizando husos y tierra ...",
         "merging": "Uniendo husos por desfase horario ...",
         "saved": "Mapa guardado en {path}",
+        "title_zones": "Husos horarios del mundo — proyección {proj}",
+        "subtitle_zones": "Desfase UTC de la hora oficial: {mode}.",
+        "dst_std": "Rayado: lugares con horario de verano",
+        "dst_date": "Rayado: horario de verano vigente el {date}",
+        "sea": "Colores más claros: alta mar (husos náuticos, franjas de 15°)",
     },
     "fr": {
         "language": "Français",
@@ -160,6 +189,11 @@ TEXTS = {
         "raster": "Rastérisation des fuseaux et des terres ...",
         "merging": "Fusion des fuseaux par décalage horaire ...",
         "saved": "Carte enregistrée dans {path}",
+        "title_zones": "Fuseaux horaires du monde — projection {proj}",
+        "subtitle_zones": "Décalage UTC de l'heure légale : {mode}.",
+        "dst_std": "Hachuré : lieux appliquant l'heure d'été",
+        "dst_date": "Hachuré : heure d'été en vigueur le {date}",
+        "sea": "Couleurs plus claires : haute mer (fuseaux nautiques, bandes de 15°)",
     },
     "de": {
         "language": "Deutsch",
@@ -177,6 +211,11 @@ TEXTS = {
         "raster": "Rasterisiere Zeitzonen und Landflächen ...",
         "merging": "Fasse Zeitzonen nach UTC-Versatz zusammen ...",
         "saved": "Karte gespeichert unter {path}",
+        "title_zones": "Zeitzonen der Welt — {proj}",
+        "subtitle_zones": "UTC-Versatz der gesetzlichen Zeit: {mode}.",
+        "dst_std": "Schraffiert: Orte mit Sommerzeit",
+        "dst_date": "Schraffiert: Sommerzeit am {date} in Kraft",
+        "sea": "Hellere Farben: offenes Meer (nautische Zeitzonen, 15°-Streifen)",
     },
     "it": {
         # "ora solare" in italiano significa anche "ora invernale": si usa "tempo solare"
@@ -195,6 +234,11 @@ TEXTS = {
         "raster": "Rasterizzazione di fusi orari e terre emerse ...",
         "merging": "Unione dei fusi per scostamento orario ...",
         "saved": "Mappa salvata in {path}",
+        "title_zones": "Fusi orari del mondo — proiezione {proj}",
+        "subtitle_zones": "Scostamento UTC dell'ora ufficiale: {mode}.",
+        "dst_std": "Tratteggio: luoghi con ora legale",
+        "dst_date": "Tratteggio: ora legale in vigore il {date}",
+        "sea": "Colori più chiari: mare aperto (fusi nautici, fasce di 15°)",
     },
     "ru": {
         "language": "Русский",
@@ -212,6 +256,11 @@ TEXTS = {
         "raster": "Растеризация поясов и суши ...",
         "merging": "Объединение поясов по смещению UTC ...",
         "saved": "Карта сохранена: {path}",
+        "title_zones": "Часовые пояса мира — проекция {proj}",
+        "subtitle_zones": "Смещение официального времени от UTC: {mode}.",
+        "dst_std": "Штриховка: места с летним временем",
+        "dst_date": "Штриховка: летнее время действует {date}",
+        "sea": "Светлые цвета: открытое море (морские пояса, полосы по 15°)",
     },
     "zh": {
         "language": "中文",
@@ -228,6 +277,11 @@ TEXTS = {
         "raster": "正在栅格化时区和陆地 ...",
         "merging": "正在按时差合并时区 ...",
         "saved": "地图已保存到 {path}",
+        "title_zones": "世界时区 — {proj}投影",
+        "subtitle_zones": "官方时间的 UTC 偏移：{mode}。",
+        "dst_std": "斜线：实行夏令时的地区",
+        "dst_date": "斜线：{date} 正在实行夏令时",
+        "sea": "浅色：公海（航海时区，每 15° 一带）",
     },
     "ja": {
         "language": "日本語",
@@ -244,6 +298,11 @@ TEXTS = {
         "raster": "タイムゾーンと陸地をラスタ化中 ...",
         "merging": "時差ごとにタイムゾーンを統合中 ...",
         "saved": "地図を保存しました: {path}",
+        "title_zones": "世界の時間帯 — {proj}図法",
+        "subtitle_zones": "公式時刻の UTC との時差：{mode}。",
+        "dst_std": "斜線：夏時間を実施している地域",
+        "dst_date": "斜線：{date} に夏時間を実施中",
+        "sea": "淡い色：公海（航海時間帯、15° ごとの帯）",
     },
     "ar": {
         "language": "العربية",
@@ -261,6 +320,11 @@ TEXTS = {
         "raster": "جارٍ تحويل المناطق الزمنية واليابسة إلى شبكة ...",
         "merging": "جارٍ دمج المناطق الزمنية حسب فرق التوقيت ...",
         "saved": "تم حفظ الخريطة في {path}",
+        "title_zones": "المناطق الزمنية في العالم — إسقاط {proj}",
+        "subtitle_zones": "فرق التوقيت الرسمي عن UTC: {mode}.",
+        "dst_std": "المناطق المخططة: أماكن تطبق التوقيت الصيفي",
+        "dst_date": "المناطق المخططة: التوقيت الصيفي سارٍ في {date}",
+        "sea": "الألوان الأفتح: أعالي البحار (مناطق زمنية بحرية، شرائح بعرض 15°)",
     },
 }
 LANGUAGES = list(TEXTS)
@@ -393,38 +457,40 @@ def get_data(folder):
 
 
 def utc_offset(tzid, date=None):
-    """UTC offset (hours) of a time zone.
+    """UTC offset (hours) of a time zone and whether it has daylight saving.
 
     Without date: standard time (no DST) = the smaller offset between January
-    and July, which works in both hemispheres.
-    With date: the legal offset on that day (DST included)."""
+    and July, which works in both hemispheres; DST = the two differ.
+    With date: the legal offset on that day; DST = in force on that day."""
     try:
         z = ZoneInfo(tzid)
     except (ZoneInfoNotFoundError, ValueError):
-        return np.nan
-    if date is not None:
-        t = dt.datetime(date.year, date.month, date.day, 12, tzinfo=dt.timezone.utc)
-        return t.astimezone(z).utcoffset().total_seconds() / 3600
-    year = dt.date.today().year
+        return np.nan, False
+    year = date.year if date is not None else dt.date.today().year
     offs = [dt.datetime(year, m, 15, 12, tzinfo=dt.timezone.utc).astimezone(z)
             .utcoffset().total_seconds() / 3600 for m in (1, 7)]
-    return min(offs)
+    if date is not None:
+        t = dt.datetime(date.year, date.month, date.day, 12, tzinfo=dt.timezone.utc)
+        legal = t.astimezone(z).utcoffset().total_seconds() / 3600
+        return legal, legal > min(offs)
+    return min(offs), offs[0] != offs[1]
 
 
 def load_timezones(path, date, tolerance):
     say("reading")
     tz = gpd.read_file(f"zip://{path}")
-    tz["offset"] = [utc_offset(t, date) for t in tz["tzid"]]
+    tz["offset"], tz["dst"] = zip(*(utc_offset(t, date) for t in tz["tzid"]))
     tz = tz.dropna(subset=["offset"])
     tz["geometry"] = tz.geometry.simplify(tolerance, preserve_topology=True)
     return tz
 
 
 # ----------------------------------------------------------------------------
-# Grid (raster) of solar time − official time
+# Grid (raster) of UTC offsets and of solar time − official time
 # ----------------------------------------------------------------------------
 def compute_grid(timezones, land, res, sea_margin):
-    """Returns the difference grid, the Antarctica mask and the zones as drawn.
+    """Returns the UTC offset grid, the land, Antarctica and daylight-saving
+    (land only) masks, and the zones as drawn.
 
     The "with oceans" data covers the sea with nautical zones (Etc/GMT±N), plain
     15° strips set by longitude. Left alone they swallow the small islands, so
@@ -460,20 +526,43 @@ def compute_grid(timezones, land, res, sea_margin):
     offset = np.where(dist <= sea_margin, nearest, sea)
     offset = np.where(np.isnan(offset), nearest, offset)
 
-    lon = -180 + res * (np.arange(width) + 0.5)
     lat = 90 - res * (np.arange(height) + 0.5)
-    diff = lon[None, :] / 15.0 - offset
-    diff = (diff + 12) % 24 - 12            # e.g. Kiribati (+14) near −157°
-    diff[~is_land] = np.nan
     antarctica = is_land & (lat[:, None] < -60)
-    diff[antarctica] = np.nan
+    civil_zones = timezones[~nautical]
+    dst = rasterio.features.rasterize(
+        ((g, 1) for g in civil_zones.geometry[civil_zones["dst"].astype(bool)]),
+        out_shape=(height, width), transform=transform, fill=0, dtype="uint8").astype(bool)
+    dst &= is_land & ~antarctica
 
     say("merging")
     zones = gpd.GeoDataFrame(
         [{"offset": float(v), "geometry": shapely.geometry.shape(g)}
          for g, v in rasterio.features.shapes(offset, transform=transform)],
         crs="EPSG:4326")
-    return diff, antarctica, zones
+    return offset, is_land, antarctica, dst, zones
+
+
+def solar_difference(offset, is_land, antarctica, res):
+    """Local mean solar time − official time (hours), on land outside Antarctica."""
+    lon = -180 + res * (np.arange(offset.shape[1]) + 0.5)
+    diff = lon[None, :] / 15.0 - offset
+    diff = (diff + 12) % 24 - 12            # e.g. Kiribati (+14) near −157°
+    diff[~is_land | antarctica] = np.nan
+    return diff
+
+
+def zone_colours(offset, is_land, antarctica):
+    """RGBA image of the time zones: a pastel colour per offset, paler at sea."""
+    whole = np.isclose(offset, np.round(offset))
+    half = np.isclose(np.mod(offset, 1), 0.5)
+    idx = np.mod(np.nan_to_num(np.round(offset)), len(ZONE_COLORS)).astype(int)
+    palette = np.array([matplotlib.colors.to_rgb(c) for c in ZONE_COLORS])
+    rgb = palette[idx]
+    rgb[~whole & half] = matplotlib.colors.to_rgb(ZONE_HALF_COLOR)
+    rgb[~whole & ~half] = matplotlib.colors.to_rgb(ZONE_QUARTER_COLOR)
+    rgb[~is_land] += (1 - rgb[~is_land]) * SEA_PALENESS
+    alpha = ~(np.isnan(offset) | antarctica)
+    return np.dstack([rgb, alpha]).astype("float32")
 
 
 # ----------------------------------------------------------------------------
@@ -534,8 +623,8 @@ def country_name_column(countries):
 # ----------------------------------------------------------------------------
 # Drawing
 # ----------------------------------------------------------------------------
-def draw(diff, antarctica, zones, land, countries, projection, limit,
-         date, names, output, show):
+def draw(offset, is_land, antarctica, dst, zones, land, countries, projection, limit,
+         date, names, output, show, mode, res):
     factory, lat_lim = PROJECTIONS[projection]
     pc = ccrs.PlateCarree()
 
@@ -548,16 +637,25 @@ def draw(diff, antarctica, zones, land, countries, projection, limit,
     ax.set_facecolor("white")
 
     extent = [-180, 180, -90, 90]
-    ny, nx = diff.shape
+    ny, nx = offset.shape
     regrid = (min(nx, 4000), min(ny, 2000))
 
-    # Antarctica in light grey (the difference has no practical meaning there)
+    # Antarctica in light grey (neither the difference nor the zones have much
+    # practical meaning there)
     ax.imshow(np.where(antarctica, 1.0, np.nan), extent=extent, transform=pc,
               origin="upper", cmap=LinearSegmentedColormap.from_list("a", [ANTARCTICA_COLOR] * 2),
               vmin=0, vmax=1, regrid_shape=regrid, interpolation="nearest", zorder=1)
-    im = ax.imshow(diff, extent=extent, transform=pc, origin="upper", cmap=CMAP,
-                   vmin=-limit, vmax=limit, regrid_shape=regrid,
-                   interpolation="nearest", zorder=2)
+    if mode == "solar":
+        im = ax.imshow(solar_difference(offset, is_land, antarctica, res), extent=extent,
+                       transform=pc, origin="upper", cmap=CMAP, vmin=-limit, vmax=limit,
+                       regrid_shape=regrid, interpolation="nearest", zorder=2)
+    else:
+        ax.imshow(zone_colours(offset, is_land, antarctica), extent=extent, transform=pc,
+                  origin="upper", regrid_shape=regrid, interpolation="nearest", zorder=2)
+        dst_shapes = [shapely.geometry.shape(g) for g, _ in rasterio.features.shapes(
+            dst.astype("uint8"), mask=dst, transform=from_origin(-180, 90, res, res))]
+        ax.add_geometries(dst_shapes, crs=pc, facecolor="none", edgecolor=HATCH_COLOR,
+                          linewidth=0, hatch="////", alpha=0.45, zorder=2.5)
 
     # Country borders, coastlines and time-zone limits
     ax.add_geometries(countries.geometry, crs=pc, facecolor="none",
@@ -577,18 +675,26 @@ def draw(diff, antarctica, zones, land, countries, projection, limit,
     #      (Azores, Iceland, Kiribati, Chatham ...), which names would cover
     #   3. names of the other countries
     #   4. UTC offsets of the large regions (largest first)
+    # On the time-zone map the offsets are the main content: they all go first.
+    zones_map = mode == "zones"
     halo = [pe.withStroke(linewidth=2.2, foreground="white")]
     regions = regions.assign(area=regions.geometry.area).sort_values("area", ascending=False)
     small = regions["area"] < 200
+    placed = []                 # (offset, point) of every offset label
 
-    def label_offsets(sel):
+    def label_offsets(sel, skip_near=None):
         for g, v in zip(sel.geometry, sel["offset"]):
+            if skip_near is not None and any(
+                    pv == v and g.distance(pp) < skip_near for pv, pp in placed):
+                continue        # the same offset is already written close by
             for p in label_points(g):
                 if p.y < -62 or (lat_lim and not (lat_lim[0] + 2 < p.y < lat_lim[1] - 2)):
                     continue
-                if lab.text(p.x, p.y, format_offset(v), transform=pc, fontsize=7.5,
+                if lab.text(p.x, p.y, format_offset(v), transform=pc,
+                            fontsize=8.5 if zones_map else 7.5,
                             fontweight="bold", color="#3b2a1e", ha="center", va="center",
                             path_effects=halo, zorder=6, margin=1):
+                    placed.append((v, p))
                     break
 
     sel = countries.iloc[0:0]
@@ -596,8 +702,22 @@ def draw(diff, antarctica, zones, land, countries, projection, limit,
         col = country_name_column(countries)
         sel = countries[(countries["LABELRANK"] <= 3) & (countries["CONTINENT"] != "Antarctica")]
         sel = sel.sort_values(["LABELRANK", "POP_EST"], ascending=[True, False])
+    if zones_map:
+        # The land part of a zone often merges with the nautical strip of the same
+        # offset (eastern USA and the Atlantic −5), so it gets a label of its own
+        on_land = is_land & ~antarctica & ~np.isnan(offset)
+        land_regions = gpd.GeoDataFrame(
+            [{"offset": float(v), "geometry": shapely.geometry.shape(g)}
+             for g, v in rasterio.features.shapes(offset, mask=on_land,
+                                                  transform=from_origin(-180, 90, res, res))],
+            crs="EPSG:4326")
+        land_regions = land_regions.assign(area=land_regions.geometry.area)
+        land_regions = land_regions[land_regions["area"] >= 8].sort_values("area", ascending=False)
+        label_offsets(regions[small & (regions["area"] >= 3)])
+        label_offsets(land_regions, skip_near=6)
+        label_offsets(regions[~small], skip_near=6)
     for main in (True, False):
-        if not main:
+        if not main and not zones_map:
             label_offsets(regions[small & (regions["area"] >= 3)])
         for _, r in sel[(sel["LABELRANK"] <= 2) == main].iterrows():
             rank = int(r["LABELRANK"])
@@ -610,23 +730,37 @@ def draw(diff, antarctica, zones, land, countries, projection, limit,
                      ha="center", va="center", fontweight="bold" if rank == 1 else "normal",
                      path_effects=[pe.withStroke(linewidth=1.6, foreground="white")], zorder=5)
 
-    label_offsets(regions[~small])
+    if not zones_map:
+        label_offsets(regions[~small])
 
     # Titles, colour scale and credits (mirrored for right-to-left languages)
     rtl = LANG in RTL
     x_text, ha = (0.985, "right") if rtl else (0.015, "left")
-    mode = T["mode_date"].format(date=date.isoformat()) if date else T["mode_std"]
-    fig.text(x_text, 0.965, shape(T["title"].format(proj=T["proj"][projection])),
+    when = T["mode_date"].format(date=date.isoformat()) if date else T["mode_std"]
+    title, subtitle = ("title_zones", "subtitle_zones") if zones_map else ("title", "subtitle")
+    fig.text(x_text, 0.965, shape(T[title].format(proj=T["proj"][projection])),
              fontsize=16, fontweight="bold", color="#222", ha=ha)
-    fig.text(x_text, 0.94, shape(T["subtitle"].format(mode=mode)),
+    fig.text(x_text, 0.94, shape(T[subtitle].format(mode=when)),
              fontsize=9.5, color="#555", ha=ha)
 
-    cax = fig.add_axes([0.75 if rtl else 0.03, 0.06, 0.22, 0.018])
-    cb = fig.colorbar(im, cax=cax, orientation="horizontal",
-                      ticks=np.arange(-limit, limit + 0.01, 1))
-    cb.ax.tick_params(labelsize=8)
-    cb.outline.set_linewidth(0.4)
-    cb.set_label(shape(T["cbar"]), fontsize=8.5)
+    if zones_map:
+        dst_text = T["dst_date"].format(date=date.isoformat()) if date else T["dst_std"]
+        land_colour, sea_colour = zone_colours(np.array([[0.0, 0.0]]), np.array([[True, False]]),
+                                               np.zeros((1, 2), bool))[0, :, :3]
+        handles = [mpatches.Patch(facecolor=land_colour, edgecolor=HATCH_COLOR, hatch="////",
+                                  linewidth=0.4, label=shape(dst_text)),
+                   mpatches.Patch(facecolor=sea_colour, edgecolor="#999", linewidth=0.4,
+                                  label=shape(T["sea"]))]
+        fig.legend(handles=handles, loc="lower right" if rtl else "lower left",
+                   bbox_to_anchor=(0.985 if rtl else 0.015, 0.02), fontsize=8.5,
+                   frameon=False, handlelength=2.2, handleheight=1.3)
+    else:
+        cax = fig.add_axes([0.75 if rtl else 0.03, 0.06, 0.22, 0.018])
+        cb = fig.colorbar(im, cax=cax, orientation="horizontal",
+                          ticks=np.arange(-limit, limit + 0.01, 1))
+        cb.ax.tick_params(labelsize=8)
+        cb.outline.set_linewidth(0.4)
+        cb.set_label(shape(T["cbar"]), fontsize=8.5)
     fig.text(0.015 if rtl else 0.985, 0.012, shape(T["credit"]), fontsize=7, color="#888",
              ha="left" if rtl else "right")
 
@@ -642,6 +776,9 @@ def main():
     global T, LANG
     p = argparse.ArgumentParser(
         description="World map of the difference between solar time and official time.")
+    p.add_argument("--mode", "-m", default="solar", choices=["solar", "zones"],
+                   help="solar: solar time − official time (default); "
+                        "zones: plain time-zone map, one colour per UTC offset")
     p.add_argument("--projection", "-p", default="equal-earth", choices=list(PROJECTIONS),
                    help="map projection (default: equal-earth)")
     p.add_argument("--lang", "-l", metavar="LANG",
@@ -651,7 +788,8 @@ def main():
                    help="use the legal time of this date (daylight saving included); "
                         "without it, standard time is used")
     p.add_argument("--limit", type=float, default=2.0,
-                   help="difference in hours shown with the strongest colour (default: 2)")
+                   help="difference in hours shown with the strongest colour (default: 2; "
+                        "--mode solar only)")
     p.add_argument("--res", type=float, default=0.1,
                    help="grid resolution in degrees (default: 0.1)")
     p.add_argument("--simplify", type=float, default=0.02,
@@ -660,8 +798,9 @@ def main():
                    help="how far (degrees) each civil time zone extends into the sea "
                         "before the nautical zones take over (default: 1.5)")
     p.add_argument("--no-names", action="store_true", help="hide country names")
-    p.add_argument("--output", "-o", default="solar_time_map.png",
-                   help="output file: png, pdf or svg (default: %(default)s)")
+    p.add_argument("--output", "-o",
+                   help="output file: png, pdf or svg "
+                        "(default: solar_time_map.png, or time_zones_map.png with --mode zones)")
     p.add_argument("--show", action="store_true", help="also open the map in a window")
     p.add_argument("--cache", default=os.path.join(os.path.expanduser("~"), ".cache", "solar_time_map"),
                    help="folder for downloaded data (default: %(default)s)")
@@ -693,9 +832,10 @@ def main():
     land = gpd.read_file(paths["land.geojson"])
     countries = gpd.read_file(paths["countries.geojson"])
 
-    diff, antarctica, zones = compute_grid(timezones, land, a.res, a.sea_margin)
-    draw(diff, antarctica, zones, land, countries, a.projection, a.limit,
-         date, not a.no_names, a.output, a.show)
+    output = a.output or ("time_zones_map.png" if a.mode == "zones" else "solar_time_map.png")
+    offset, is_land, antarctica, dst, zones = compute_grid(timezones, land, a.res, a.sea_margin)
+    draw(offset, is_land, antarctica, dst, zones, land, countries, a.projection, a.limit,
+         date, not a.no_names, output, a.show, a.mode, a.res)
 
 
 if __name__ == "__main__":
