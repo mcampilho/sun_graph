@@ -1,0 +1,13 @@
+# Generated outputs and old images in the project root
+# (the images used by the READMEs live in images/)
+/*.png
+/*.mp4
+/*.pdf
+/*.svg
+
+# Old version of the animation, to be deleted
+/earth_moon_sun_old.py
+
+# Python
+__pycache__/
+*.pyc
