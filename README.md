@@ -60,6 +60,33 @@ python solar_graph.py "Lisboa, Portugal" --lang pt --output lisboa.png
 python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
 ```
 
+### Comparing clocks
+
+![Lisbon without daylight saving time, with working hours marked](images/solar_graph_lisboa_en.png)
+
+Three options help to see how a clock fits the daylight:
+
+- `--mark HH:MM` draws a dashed line at that time, on the yearly graph and on
+  the day strip. Repeat it for more lines, e.g. working hours from 08:30 to
+  17:30: `--mark 08:30 --mark 17:30`.
+- `--dst off` simulates the place **without** daylight saving time (standard
+  time all year). `--dst on` does the opposite for a place that has none: it
+  adds seasonal daylight saving (+1 h), with the European rule in the northern
+  hemisphere (last Sunday of March to last Sunday of October) and, in the
+  southern hemisphere, from the first Sunday of October to the first Sunday of
+  April.
+- `--shift ±H` moves the standard time, e.g. `--shift +1` or `--shift -1`
+  (half hours work too: `--shift 0.5`).
+
+A simulated clock is noted in red under the title, and all times in the graph
+and the legend follow it.
+
+```bash
+python solar_graph.py "Lisboa, Portugal" --mark 08:30 --mark 17:30 --dst off
+python solar_graph.py "Madrid, Spain" --shift -1 --mark 09:00 --mark 18:00
+python solar_graph.py "Brisbane, Australia" --dst on
+```
+
 | Option | Meaning |
 |---|---|
 | `place` | City and country, looked up on OpenStreetMap (needs internet) |
@@ -68,6 +95,9 @@ python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --
 | `--tz` | IANA time zone, e.g. `Europe/Lisbon` (default: found from the coordinates) |
 | `--year` | Year to draw (default: current year) |
 | `--day MM-DD` | Day shown in detail (default: today) |
+| `--mark HH:MM`, `-m` | Dashed line at that time; repeat for more lines |
+| `--dst` | `legal` (default: the zone's rules), `off` (no daylight saving), `on` (simulated daylight saving where there is none) |
+| `--shift HOURS` | Move the standard time, e.g. `+1` or `-1` |
 | `--lang` | `en` or `pt` |
 | `--output`, `-o` | Image file (`.png`, `.pdf`, `.svg`); without it a window opens |
 | `--show` | Also open a window when saving |

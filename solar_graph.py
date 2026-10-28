@@ -12,6 +12,12 @@ Works at polar latitudes (midnight sun / polar night), because the Sun's
 elevation is computed minute by minute instead of using sunrise/sunset
 formulas.
 
+Options to compare clocks:
+  - --mark HH:MM draws dashed lines at given times (e.g. working hours)
+  - --dst off simulates the place without daylight saving time, --dst on
+    with seasonal daylight saving where it has none
+  - --shift ±H moves the standard time (e.g. +1 or -1)
+
 Texts follow the system language by default, or the language given with
 --lang. Supported: en, pt (European Portuguese).
 
@@ -24,6 +30,8 @@ Examples:
     python solar_graph.py "Reykjavik, Iceland" --year 2026 --day 10-25
     python solar_graph.py "Lisboa, Portugal" --lang pt --output lisboa.png
     python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo
+    python solar_graph.py "Lisboa, Portugal" --mark 08:30 --mark 17:30 --dst off
+    python solar_graph.py "Madrid, Spain" --shift -1 --mark 09:00 --mark 18:00
 """
 
 import argparse
@@ -36,6 +44,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patheffects as pe
 from matplotlib.colors import ListedColormap, BoundaryNorm
 from matplotlib.gridspec import GridSpec
 
@@ -46,6 +55,10 @@ PHASE_COLORS = ["#2e424d", "#57676f", "#6b8d98", "#93bccb", "#b0d9e6"]
 LIMITS = [-18.0, -12.0, -6.0, -0.833]   # lower elevation limits; -0.833° = refraction + semi-diameter
 NOON_COLOR = "#e8191c"
 MIDNIGHT_COLOR = "#f2d50f"
+MARK_COLOR = "white"          # lines of the marked times (--mark)
+MARK_EDGE = "#1d2a31"
+MARK_STYLE = dict(color=MARK_COLOR, gapcolor=MARK_EDGE, lw=1.0, ls=(0, (5, 3)))
+NOTE_COLOR = "#c2410c"        # "simulated clock" note under the title
 
 # ----------------------------------------------------------------------------
 # Translations
@@ -64,6 +77,13 @@ TEXTS = {
         "polar_night": "{n} days without sunrise",
         "not_found": "Location not found: {place!r}",
         "saved": "Graph saved to {path}",
+        "marked": "marked times",
+        "simulated": "Simulated clock",
+        "sim_no_dst": "no daylight saving time",
+        "sim_dst": "with daylight saving time",
+        "sim_shift": "standard time {h} h",
+        "no_dst_to_remove": "Note: {tz} has no daylight saving time in {year}; --dst off changes nothing.",
+        "dst_already": "Note: {tz} already has daylight saving time in {year}; its own rules are used.",
     },
     "pt": {
         "phases": ["Noite", "Crepúsculo astronómico", "Crepúsculo náutico",
@@ -78,6 +98,13 @@ TEXTS = {
         "polar_night": "{n} dias sem nascer do sol",
         "not_found": "Localização não encontrada: {place!r}",
         "saved": "Gráfico guardado em {path}",
+        "marked": "horas marcadas",
+        "simulated": "Simulação",
+        "sim_no_dst": "sem hora de verão",
+        "sim_dst": "com hora de verão",
+        "sim_shift": "hora padrão {h} h",
+        "no_dst_to_remove": "Nota: {tz} não tem hora de verão em {year}; --dst off não muda nada.",
+        "dst_already": "Nota: {tz} já tem hora de verão em {year}; usam-se as suas próprias regras.",
     },
 }
 LANGUAGES = list(TEXTS)
@@ -185,10 +212,21 @@ def sun_elevation(unix_s, lat, lon):
 # ----------------------------------------------------------------------------
 # Yearly grid (days x minutes, in local time)
 # ----------------------------------------------------------------------------
-def local_offsets(dates, tz):
-    """UTC offset (minutes) of every local minute of every day, daylight saving included."""
+def local_offsets(dates, tz, lat, dst="legal", shift=0.0):
+    """UTC offset (minutes) of every local minute of every day.
+
+    dst:   "legal" follows the rules of the time zone (daylight saving included);
+           "off" uses standard time all year;
+           "on" adds seasonal daylight saving to a zone that has none
+           (see simulated_dst); a zone that has it keeps its own rules.
+    shift: hours added to the standard time (e.g. +1 or -1).
+
+    Also returns whether the zone itself has daylight saving in that year."""
     off = np.empty((len(dates), 1440))
+    std = np.empty(len(dates))
     for i, d in enumerate(dates):
+        noon = dt.datetime(d.year, d.month, d.day, 12, tzinfo=tz)
+        std[i] = (noon.utcoffset() - (noon.dst() or dt.timedelta(0))).total_seconds() / 60
         a = dt.datetime(d.year, d.month, d.day, 0, 0, tzinfo=tz).utcoffset()
         b = dt.datetime(d.year, d.month, d.day, 23, 59, tzinfo=tz).utcoffset()
         if a == b:
@@ -198,17 +236,55 @@ def local_offsets(dates, tz):
             for m in range(1440):
                 t = (base + dt.timedelta(minutes=m)).replace(tzinfo=tz)
                 off[i, m] = t.utcoffset().total_seconds() / 60
-    return off
+
+    has_dst = bool(np.any(off != std[:, None]))
+    if dst == "off":
+        off = np.repeat(std[:, None], 1440, axis=1)
+    elif dst == "on" and not has_dst:
+        off = std[:, None] + 60 * simulated_dst(dates, std, lat)
+    return off + shift * 60, has_dst
 
 
-def compute(lat, lon, tz, year):
+def simulated_dst(dates, std, lat):
+    """True for the local minutes that fall in a simulated daylight-saving period.
+
+    Northern hemisphere: European rule, from the last Sunday of March to the
+    last Sunday of October, changing at 01:00 UTC. Southern hemisphere: from
+    the first Sunday of October to the first Sunday of April, changing at
+    02:00 local standard time (as in Chile, Paraguay or southern Australia)."""
+    year = dates[0].year
+
+    def sunday(month, last):
+        if last:
+            d = dt.date(year, month + 1, 1) - dt.timedelta(days=1)
+            return d - dt.timedelta(days=(d.weekday() + 1) % 7)
+        d = dt.date(year, month, 1)
+        return d + dt.timedelta(days=(6 - d.weekday()) % 7)
+
+    def utc_minute(day, local_minute=None):
+        """Minutes since 1 January 00:00 UTC of 01:00 UTC on that day, or of
+        local_minute in local standard time."""
+        i = (day - dates[0]).days
+        return i * 1440 + (60 if local_minute is None else local_minute - std[i])
+
+    # UTC minute of every local minute of the year (from the standard offset)
+    t = np.arange(len(dates))[:, None] * 1440 + np.arange(1440)[None, :] - std[:, None]
+    if lat >= 0:
+        start, end = utc_minute(sunday(3, last=True)), utc_minute(sunday(10, last=True))
+        return (t >= start) & (t < end)
+    start = utc_minute(sunday(10, last=False), 120)
+    end = utc_minute(sunday(4, last=False), 120)
+    return (t >= start) | (t < end)
+
+
+def compute(lat, lon, tz, year, dst="legal", shift=0.0):
     dates = [dt.date(year, 1, 1) + dt.timedelta(days=k)
              for k in range((dt.date(year + 1, 1, 1) - dt.date(year, 1, 1)).days)]
     utc_midnight = np.array([dt.datetime(d.year, d.month, d.day,
                                          tzinfo=dt.timezone.utc).timestamp()
                              for d in dates])
     minutes = np.arange(1440)
-    off = local_offsets(dates, tz)
+    off, has_dst = local_offsets(dates, tz, lat, dst, shift)
     # evaluate the centre of each minute (rounds times to the nearest minute)
     unix = utc_midnight[:, None] + (minutes[None, :] + 0.5 - off) * 60.0
     elev = sun_elevation(unix, lat, lon)
@@ -224,7 +300,7 @@ def compute(lat, lon, tz, year):
     noon = (solar_utc + off[idx, m_noon]) % 1440
     m_mid = ((solar_utc - 720 + off[:, 0]) % 1440).astype(int)
     midnight = (solar_utc - 720 + off[idx, m_mid]) % 1440
-    return dates, phase, elev, noon / 60, midnight / 60
+    return dates, phase, elev, noon / 60, midnight / 60, has_dst
 
 
 # ----------------------------------------------------------------------------
@@ -256,9 +332,31 @@ def plot_with_breaks(ax, x, y, color):
     ax.plot(x, y, color=color, lw=1.4)
 
 
-def draw(name, lat, lon, tz_name, year, day, output, show):
+def mark_line(ax, value, vertical=False):
+    """Thin line of white dashes with dark gaps, visible on day and night colours."""
+    (ax.axvline if vertical else ax.axhline)(value, **MARK_STYLE)
+
+
+def clock_note(dst, shift, has_dst):
+    """Text describing a simulated clock, or '' for the legal time."""
+    notes = []
+    if dst == "off" and has_dst:
+        notes.append(T["sim_no_dst"])
+    elif dst == "on" and not has_dst:
+        notes.append(T["sim_dst"])
+    if shift:
+        notes.append(T["sim_shift"].format(h=f"{shift:+g}".replace("-", "−")))
+    return T["simulated"] + ": " + ", ".join(notes) if notes else ""
+
+
+def draw(name, lat, lon, tz_name, year, day, output, show,
+         dst="legal", shift=0.0, marks=()):
     tz = ZoneInfo(tz_name)
-    dates, phase, elev, noon, midnight = compute(lat, lon, tz, year)
+    dates, phase, elev, noon, midnight, has_dst = compute(lat, lon, tz, year, dst, shift)
+    if dst == "off" and not has_dst:
+        print(T["no_dst_to_remove"].format(tz=tz_name, year=year))
+    elif dst == "on" and has_dst:
+        print(T["dst_already"].format(tz=tz_name, year=year))
     n = len(dates)
     cmap = ListedColormap(PHASE_COLORS)
     norm = BoundaryNorm(np.arange(-0.5, 5.5), cmap.N)
@@ -279,6 +377,12 @@ def draw(name, lat, lon, tz_name, year, day, output, show):
     ax.axvline(i_day, color="white", lw=0.9)
     ax.axvline(i_day + 1, color="white", lw=0.9)
 
+    for h in marks:
+        mark_line(ax, h)
+        ax.text(n - 3, h + 0.12, hhmm(h * 60), ha="right", va="bottom", fontsize=7.5,
+                color=MARK_COLOR, fontweight="bold",
+                path_effects=[pe.withStroke(linewidth=2, foreground=MARK_EDGE)])
+
     months = T["months"]
     starts = [(dt.date(year, m, 1) - dates[0]).days for m in range(1, 13)]
     ax.set_xticks(starts)
@@ -295,6 +399,10 @@ def draw(name, lat, lon, tz_name, year, day, output, show):
                  fontsize=15, fontweight="bold", color="#333")
     fig.text(0.99, 0.955, f"{coords} · {T['zone']} {tz_name}", ha="right",
              fontsize=9, color="#777")
+    note = clock_note(dst, shift, has_dst)
+    if note:
+        fig.text(0.045, 0.937, note, ha="left", fontsize=9.5, color=NOTE_COLOR,
+                 fontweight="bold")
 
     # --- Strip of the chosen day ---------------------------------------------
     axd = fig.add_subplot(gs[1])
@@ -308,6 +416,8 @@ def draw(name, lat, lon, tz_name, year, day, output, show):
     axd.set_yticks([])
     for s in axd.spines.values():
         s.set_visible(False)
+    for h in marks:
+        mark_line(axd, h, vertical=True)
     axd.text(-0.15, 0.5, day.strftime("%d\n") + months[day.month - 1],
              transform=axd.transData, ha="right", va="center",
              fontsize=11, color="white", fontweight="bold",
@@ -342,6 +452,14 @@ def draw(name, lat, lon, tz_name, year, day, output, show):
                  transform=axl.transAxes)
         axl.text(xk + 0.026, yy, hhmm(val * 60), fontsize=8.5, va="center",
                  color="#333", transform=axl.transAxes)
+    if marks:
+        yy = 0.32
+        axl.plot([xk, xk + 0.02], [yy, yy], color=MARK_EDGE, lw=1.4, ls=(0, (3, 2)),
+                 transform=axl.transAxes)
+        axl.text(xk + 0.026, yy, " · ".join(hhmm(h * 60) for h in marks), fontsize=8.5,
+                 va="center", color="#333", transform=axl.transAxes)
+        axl.text(xk + 0.026, yy - 0.13, T["marked"], fontsize=7.5, va="center",
+                 color="#777", transform=axl.transAxes)
 
     # Midnight sun / polar night note
     never_sets = np.all(phase == 4, axis=1).sum()
@@ -363,6 +481,18 @@ def draw(name, lat, lon, tz_name, year, day, output, show):
 
 
 # ----------------------------------------------------------------------------
+def parse_time(text):
+    """'8:30', '08:30' or '17' → hours as a float (8.5, 8.5, 17.0)."""
+    try:
+        h, _, m = text.partition(":")
+        value = int(h) + int(m or 0) / 60
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid time '{text}', use HH:MM")
+    if not 0 <= value < 24 or not 0 <= int(m or 0) < 60:
+        raise argparse.ArgumentTypeError(f"invalid time '{text}', use HH:MM between 00:00 and 23:59")
+    return value
+
+
 def main():
     global T, LANG
     p = argparse.ArgumentParser(description="Yearly sunlight graph.")
@@ -376,6 +506,15 @@ def main():
     p.add_argument("--lang", "-l", metavar="LANG",
                    help="language of the texts: " + ", ".join(LANGUAGES) +
                         " (default: system language, falling back to English)")
+    p.add_argument("--mark", "-m", metavar="HH:MM", action="append", type=parse_time, default=[],
+                   help="draw a dashed line at this time; repeat for more, "
+                        "e.g. --mark 08:30 --mark 17:30 (working hours)")
+    p.add_argument("--dst", choices=["legal", "off", "on"], default="legal",
+                   help="daylight saving time: 'legal' follows the time zone (default), "
+                        "'off' simulates standard time all year, 'on' simulates seasonal "
+                        "daylight saving in a zone that has none")
+    p.add_argument("--shift", type=float, default=0.0, metavar="HOURS",
+                   help="simulate moving the standard time, e.g. +1 or -1 (default: 0)")
     p.add_argument("--output", "-o", help="image file (png, pdf, svg)")
     p.add_argument("--show", action="store_true", help="also open a window")
     a = p.parse_args()
@@ -405,7 +544,8 @@ def main():
         day = today.replace(year=a.year) if not (today.month == 2 and today.day == 29) else dt.date(a.year, 2, 28)
 
     print(f"{name}: lat {lat:.4f}, lon {lon:.4f}, {T['zone']} {tz}")
-    draw(name, lat, lon, tz, a.year, day, a.output, a.show)
+    draw(name, lat, lon, tz, a.year, day, a.output, a.show,
+         dst=a.dst, shift=a.shift, marks=sorted(a.mark))
 
 
 if __name__ == "__main__":

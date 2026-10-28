@@ -63,6 +63,32 @@ python solar_graph.py "Porto, Portugal" --lang pt --output porto.png
 python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
 ```
 
+### Comparar horários
+
+![Lisboa sem hora de verão, com o horário de trabalho marcado](images/solar_graph_lisboa_pt.png)
+
+Três opções ajudam a ver como um horário se ajusta à luz do dia:
+
+- `--mark HH:MM` desenha uma linha tracejada a essa hora, no gráfico anual e
+  na faixa do dia. Repita-a para mais linhas, p. ex. o horário de trabalho das
+  08:30 às 17:30: `--mark 08:30 --mark 17:30`.
+- `--dst off` simula o local **sem** hora de verão (hora padrão todo o ano).
+  `--dst on` faz o inverso num local que não a tem: acrescenta uma hora de
+  verão sazonal (+1 h), com a regra europeia no hemisfério norte (último
+  domingo de março ao último domingo de outubro) e, no hemisfério sul, do
+  primeiro domingo de outubro ao primeiro domingo de abril.
+- `--shift ±H` muda a hora padrão, p. ex. `--shift +1` ou `--shift -1`
+  (também aceita meias horas: `--shift 0.5`).
+
+Quando o horário é simulado, isso é indicado a vermelho por baixo do título, e
+todas as horas do gráfico e da legenda seguem esse horário.
+
+```bash
+python solar_graph.py "Lisboa, Portugal" --lang pt --mark 08:30 --mark 17:30 --dst off
+python solar_graph.py "Madrid, Espanha" --lang pt --shift -1 --mark 09:00 --mark 18:00
+python solar_graph.py "Brisbane, Austrália" --lang pt --dst on
+```
+
 | Opção | Significado |
 |---|---|
 | `place` | Cidade e país, procurados no OpenStreetMap (precisa de internet) |
@@ -71,6 +97,9 @@ python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --
 | `--tz` | Fuso IANA, p. ex. `Europe/Lisbon` (por omissão: obtido a partir das coordenadas) |
 | `--year` | Ano a desenhar (por omissão: o atual) |
 | `--day MM-DD` | Dia mostrado em detalhe (por omissão: hoje) |
+| `--mark HH:MM`, `-m` | Linha tracejada a essa hora; repita para mais linhas |
+| `--dst` | `legal` (por omissão: as regras do fuso), `off` (sem hora de verão), `on` (hora de verão simulada onde não existe) |
+| `--shift HORAS` | Muda a hora padrão, p. ex. `+1` ou `-1` |
 | `--lang` | `en` ou `pt` |
 | `--output`, `-o` | Ficheiro de imagem (`.png`, `.pdf`, `.svg`); sem esta opção abre uma janela |
 | `--show` | Abre também uma janela quando guarda o ficheiro |
