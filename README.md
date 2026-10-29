@@ -144,7 +144,9 @@ UTC offset (half and quarter hours have colours of their own), paler colours
 over the open sea, and the places that use daylight saving time hatched. It
 also names the oceans and the main seas and bays, and, on cylindrical
 projections (`miller`, `mercator`), writes the offset of each 15° strip under
-the map. With
+the map. Saved as `.svg` or `.pdf`, which can be zoomed, the map (either mode)
+also names the small countries and many island groups (Azores, Madeira,
+Canary Islands, Hawaii, Line Islands ...) in small type. With
 `--date` the map shows the offsets in force on that day, and the hatching
 marks where daylight saving time is in force. All other options work as
 above (`--limit` only applies to the solar map).
@@ -152,6 +154,7 @@ above (`--limit` only applies to the solar map).
 ```bash
 python solar_time_map.py --mode zones -p miller             # time_zones_map.png
 python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
+python solar_time_map.py --mode zones -p miller -o time_zones.svg   # more names
 ```
 
 | Option | Meaning |

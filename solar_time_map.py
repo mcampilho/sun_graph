@@ -45,6 +45,7 @@ import datetime as dt
 import locale
 import os
 import sys
+import textwrap
 import urllib.request
 import warnings
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -55,7 +56,6 @@ import matplotlib.pyplot as plt
 from matplotlib import font_manager
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patches as mpatches
-import matplotlib.patheffects as pe
 
 import geopandas as gpd
 import rasterio.features
@@ -63,6 +63,7 @@ from rasterio.transform import from_origin
 from scipy.ndimage import distance_transform_edt
 import shapely.geometry
 from shapely.ops import polylabel
+from shapely.prepared import prep
 import cartopy.crs as ccrs
 
 warnings.filterwarnings("ignore", message="Geometry is in a geographic CRS")
@@ -80,7 +81,28 @@ URLS = {
                           "master/geojson/ne_50m_admin_0_countries.geojson"),
     "marine.geojson": ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
                        "master/geojson/ne_50m_geography_marine_polys.geojson"),
+    "regions.geojson": ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                        "master/geojson/ne_50m_geography_regions_polys.geojson"),
 }
+
+# Island groups missing from Natural Earth's regions (lon, lat, names), for svg/pdf
+EXTRA_ISLANDS = [
+    (-16.95, 32.75, {"en": "Madeira", "pt": "Madeira", "es": "Madeira", "fr": "Madère",
+                     "de": "Madeira", "it": "Madera", "ru": "Мадейра", "zh": "马德拉群岛",
+                     "ja": "マデイラ諸島", "ar": "ماديرا"}),
+    (-90.5, -0.6, {"en": "Galápagos Islands", "pt": "Galápagos", "es": "Islas Galápagos",
+                   "fr": "Îles Galápagos", "de": "Galápagos-Inseln", "it": "Isole Galápagos",
+                   "ru": "Галапагосские острова", "zh": "加拉帕戈斯群岛", "ja": "ガラパゴス諸島",
+                   "ar": "جزر غالاباغوس"}),
+    (-109.35, -27.1, {"en": "Easter Island", "pt": "Ilha de Páscoa", "es": "Isla de Pascua",
+                      "fr": "Île de Pâques", "de": "Osterinsel", "it": "Isola di Pasqua",
+                      "ru": "Остров Пасхи", "zh": "复活节岛", "ja": "イースター島",
+                      "ar": "جزيرة القيامة"}),
+    (-176.5, -43.9, {"en": "Chatham Islands", "pt": "Ilhas Chatham", "es": "Islas Chatham",
+                     "fr": "Îles Chatham", "de": "Chathaminseln", "it": "Isole Chatham",
+                     "ru": "Острова Чатем", "zh": "查塔姆群岛", "ja": "チャタム諸島",
+                     "ar": "جزر تشاتام"}),
+]
 
 # key: (cartopy factory, latitude limits or None for the whole globe)
 PROJECTIONS = {
@@ -663,8 +685,8 @@ def country_name_column(countries):
 # ----------------------------------------------------------------------------
 # Drawing
 # ----------------------------------------------------------------------------
-def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, projection, limit,
-         date, names, output, show, mode, res):
+def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, islands,
+         projection, limit, date, names, output, show, mode, res):
     factory, lat_lim = PROJECTIONS[projection]
     pc = ccrs.PlateCarree()
 
@@ -718,8 +740,11 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, proje
     #   4. names of the other countries
     #   5. (time-zone map) names of the oceans, seas and bays
     #   6. UTC offsets of the large regions (largest first)
+    #   (vector output) names of the small countries and of island groups
     zones_map = mode == "zones"
-    halo = [pe.withStroke(linewidth=2.2, foreground="white")]
+    # svg/pdf can be zoomed: there is room for many more small names
+    detail = os.path.splitext(output or "")[1].lower() in (".svg", ".pdf")
+    small_font = 3.5 if detail else 4.6
     regions = regions.assign(area=regions.geometry.area).sort_values("area", ascending=False)
     small = regions["area"] < 200
     placed = []                 # (offset, point) of every offset label
@@ -735,12 +760,18 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, proje
                 if lab.text(p.x, p.y, format_offset(v), transform=pc,
                             fontsize=8.5 if zones_map else 7.5,
                             fontweight="bold", color="#3b2a1e", ha="center", va="center",
-                            path_effects=halo, zorder=6, margin=1):
+                            zorder=6, margin=1):
                     placed.append((v, p))
                     break
 
     def inside_map(p):
         return not lat_lim or lat_lim[0] + 1 < p.y < lat_lim[1] - 1
+
+    # Beside a small country or island: a ring of spots around (x, y)
+    def beside(x, y):
+        return [shapely.geometry.Point(x + dx, y + dy)
+                for dx, dy in ((-3, 0), (3, 0), (0, 2), (0, -2), (-5, 0), (5, 0),
+                               (-4, 2), (4, 2), (-4, -2), (4, -2), (0, 3.5))]
 
     # Country names, all in capitals, sized by the country's area; when the
     # usual spot is taken, a few other points inside the country are tried
@@ -750,29 +781,72 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, proje
         sel = countries[countries["CONTINENT"] != "Antarctica"]
         area_km2 = sel.geometry.to_crs("ESRI:54009").area / 1e6       # Mollweide
         size = np.clip(3.2 + 1.5 * np.log10(area_km2.clip(lower=1) / 1000), 0, 10.5)
-        sel = sel.assign(size=size)[size >= 5].sort_values("size", ascending=False)
+        # long names ("República Democrática do Congo", in two lines) would
+        # dominate their neighbours: at most the size of a medium country, not bold
+        long_name = sel[col].fillna(sel["NAME"]).str.len() > 18
+        size = np.where(long_name, np.minimum(size, 7.2), size)
+        if detail:      # a little smaller overall, leaving room for small countries
+            size = np.maximum(size - 1.7, small_font)
+        sel = sel.assign(size=size)
+        sel = sel[sel["size"] >= (small_font if detail else 5)].sort_values("size", ascending=False)
+
+    def two_lines(name, longer_than=18):
+        """Splits a long name at the space nearest its middle (very long names,
+        such as "República Democrática do Congo", in three lines)."""
+        if len(name) <= longer_than or " " not in name or LANG in ("zh", "ja"):
+            return name
+        if len(name) > 24:
+            return "\n".join(textwrap.wrap(name, 12, break_on_hyphens=False,
+                                           break_long_words=False))
+        spaces = [i for i, ch in enumerate(name) if ch == " "]
+        i = min(spaces, key=lambda i: abs(i - len(name) / 2))
+        return name[:i] + "\n" + name[i + 1:]
+
+    land_shape = prep(land.union_all())
 
     def label_countries(rows):
         for _, r in rows.iterrows():
-            name = (str(r[col]) if r[col] else str(r["NAME"])).upper()
+            name = two_lines((str(r[col]) if r[col] else str(r["NAME"])).upper())
             main_part = max(getattr(r.geometry, "geoms", [r.geometry]), key=lambda g: g.area)
             spots = [shapely.geometry.Point(r["LABEL_X"], r["LABEL_Y"])] + label_points(main_part, 5)[:6]
-            tries = [(r["size"], p) for p in spots]
-            if zones_map and r["size"] < 7.5:
+            tries = [(name, r["size"], p) for p in spots]
+            if (zones_map or detail) and r["size"] < 7.5:
                 # small countries in crowded areas (Portugal, Benelux): a smaller
-                # font, inside or just beside the country
-                x, y = r["LABEL_X"], r["LABEL_Y"]
-                beside = [shapely.geometry.Point(x + dx, y + dy)
-                          for dx, dy in ((-3, 0), (3, 0), (0, 2), (0, -2), (-5, 0), (5, 0),
-                                         (-4, 2), (4, 2), (-4, -2), (4, -2), (0, 3.5))]
-                tries += [(4.6, p) for p in spots + beside]
-            any(lab.text(p.x, p.y, shape(name), transform=pc, fontsize=fs,
+                # font, inside or just beside the country, also in two lines
+                # (never over another country: only at sea or inside this one)
+                around = spots + [p for p in beside(r["LABEL_X"], r["LABEL_Y"])
+                                  if not land_shape.contains(p) or r.geometry.contains(p)]
+                for fs in (small_font, 2.8) if detail else (small_font,):
+                    tries += [(n, fs, p) for n in dict.fromkeys([name, two_lines(name, 0)])
+                              for p in around]
+            any(lab.text(p.x, p.y, shape(n), transform=pc, fontsize=fs,
                          color="#1d1d1d", ha="center", va="center",
-                         fontweight="bold" if fs >= 8 else "normal",
-                         path_effects=[pe.withStroke(linewidth=1.6 if fs > 5 else 1.2,
-                                                     foreground="white")],
+                         fontweight="bold" if fs >= 8 else "normal", linespacing=0.95,
                          zorder=5, margin=2 if fs > 5 else 1)
-                for fs, p in tries if inside_map(p))
+                for n, fs, p in tries if inside_map(p))
+
+    def label_islands():
+        """Island groups (Azores, Canaries, Hawaii, Line Islands ...) in italics."""
+        icol = f"NAME_{LANG.upper()}" if f"NAME_{LANG.upper()}" in islands.columns else "NAME"
+        taken = {str(n).lower() for c in ("NAME", "NAME_EN", col) for n in countries[c]}
+        groups = islands[(islands["FEATURECLA"] == "Island group") & (islands["SCALERANK"] >= 1)]
+        groups = groups[groups.geometry.area < 100]             # not the West Indies, Sunda ...
+        rows = [(names_.get(LANG, names_["en"]), shapely.geometry.Point(x, y).buffer(1.5))
+                for x, y, names_ in EXTRA_ISLANDS]
+        rows += [(str(r[icol] or r["NAME"]), r.geometry)
+                 for _, r in groups.sort_values("SCALERANK").iterrows()
+                 if str(r["NAME_EN"]).lower() not in taken and str(r[icol]).lower() not in taken]
+        named = []              # areas of the groups already named: skip their islands
+        for name, geom in rows:
+            p = geom.representative_point()
+            if any(a.contains(p) for a in named):
+                continue        # e.g. Oahu or Maui once "Hawaiian Islands" is there
+            for q in filter(inside_map, [p] + beside(p.x, p.y)):
+                if lab.text(q.x, q.y, shape(name), transform=pc, fontsize=small_font + 0.3,
+                            style="italic", color="#2b2b2b", ha="center", va="center",
+                            zorder=5, margin=1):
+                    named.append(geom.envelope.buffer(1.5))
+                    break
 
     def label_marine():
         """Oceans (capitals, spaced letters) and the main seas, gulfs and bays."""
@@ -792,10 +866,7 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, proje
                             ha="center", va="center", zorder=5):
                     break
 
-    label_countries(sel[sel["size"] >= 7.5])
-    label_offsets(regions[small & (regions["area"] >= 3)])
-    if zones_map:
-        label_countries(sel[(sel["size"] >= 6) & (sel["size"] < 7.5)])
+    def label_land_offsets():
         # The land part of a zone often merges with the nautical strip of the same
         # offset (eastern USA and the Atlantic −5), so it gets a label of its own
         on_land = is_land & ~antarctica & ~np.isnan(offset)
@@ -807,7 +878,18 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, proje
         land_regions = land_regions.assign(area=land_regions.geometry.area)
         land_regions = land_regions[land_regions["area"] >= 0.8].sort_values("area", ascending=False)
         label_offsets(land_regions, skip_near=8)
+
+    label_countries(sel[sel["size"] >= 7.5])
+    label_offsets(regions[small & (regions["area"] >= 3)])
+    if zones_map:
+        label_countries(sel[(sel["size"] >= 6) & (sel["size"] < 7.5)])
+        if not detail:
+            label_land_offsets()
     label_countries(sel[sel["size"] < (6 if zones_map else 7.5)])
+    if zones_map and detail:    # in svg/pdf the small countries go before them
+        label_land_offsets()
+    if detail and names:
+        label_islands()
     if zones_map:
         label_marine()
     label_offsets(regions[~small], skip_near=6 if zones_map else None)
@@ -923,12 +1005,13 @@ def main():
     land = gpd.read_file(paths["land.geojson"])
     countries = gpd.read_file(paths["countries.geojson"])
     marine = gpd.read_file(paths["marine.geojson"])
+    islands = gpd.read_file(paths["regions.geojson"])
 
     output = a.output or ("time_zones_map.png" if a.mode == "zones" else "solar_time_map.png")
     offset, is_land, antarctica, dst, zones = compute_grid(timezones, land, a.res, a.sea_margin,
                                                             a.island_join)
-    draw(offset, is_land, antarctica, dst, zones, land, countries, marine, a.projection, a.limit,
-         date, not a.no_names, output, a.show, a.mode, a.res)
+    draw(offset, is_land, antarctica, dst, zones, land, countries, marine, islands,
+         a.projection, a.limit, date, not a.no_names, output, a.show, a.mode, a.res)
 
 
 if __name__ == "__main__":

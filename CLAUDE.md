@@ -61,10 +61,17 @@ python3 earth_moon_sun.py --scenes 2 --lang en
   fusos do Canadá, como no mapa da Wikipédia. `--island-join 0` volta ao comportamento antigo.
 - As linhas e os rótulos de desvio são desenhados a partir dessa grelha vetorizada
   (`rasterio.features.shapes`) e unida por desvio; as cores em terra usam o desvio do fuso civil.
-- Nomes dos países: todos em maiúsculas, tamanho pela área (Mollweide), todos os países com
-  ≥ ~15 000 km². Cada nome tenta vários pontos dentro do país; no mapa dos fusos, os países pequenos
-  tentam ainda letra menor ao lado do país (Portugal fica ao lado de "ESPANHA"). A Bélgica e os
-  Países Baixos ainda não cabem no Miller.
+- Nomes dos países: todos em maiúsculas, sem contorno branco (o utilizador não o quer), tamanho
+  pela área (Mollweide), todos os países com ≥ ~15 000 km². Nomes com mais de 18 letras ficam no
+  máximo do tamanho de um país médio, sem negrito, em 2 linhas (> 24 letras: 3 linhas). Cada nome
+  tenta vários pontos dentro do país; no mapa dos fusos, os países pequenos tentam ainda letra menor
+  dentro ou ao lado do país, nunca sobre outro país (Portugal fica ao lado de "ESPANHA").
+- Em `.svg`/`.pdf` (`detail` em `draw`): todos os nomes 1,7 pt mais pequenos, todos os países (até
+  os micro-estados), letra mínima 2,8 pt, e arquipélagos em itálico (Natural Earth
+  `regions.geojson`, "Island group", mais `EXTRA_ISLANDS`: Madeira, Galápagos, Páscoa, Chatham;
+  uma ilha não aparece se o arquipélago já tem nome). Na Europa central ainda não cabem todos
+  (faltam p. ex. Áustria/Luxemburgo/Bósnia/Montenegro no Miller em svg). Pôr os países mais
+  pequenos primeiro foi testado e ficou pior (a Alemanha e a França passavam para letra pequena).
 - Ordem dos rótulos (o primeiro a ocupar o lugar ganha): nomes dos países grandes, desvios das
   regiões pequenas (< 200 graus², ilhas com fuso próprio), [fusos: nomes médios e desvio de cada
   parte em terra], restantes nomes, [fusos: oceanos e mares], desvios das regiões grandes. Cada

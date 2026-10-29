@@ -146,13 +146,17 @@ pastel por desvio UTC (as meias horas e os quartos de hora têm cores
 próprias), cores mais claras no mar alto e, riscados, os locais com hora de
 verão. Mostra também os nomes dos oceanos e dos principais mares e baías e, nas
 projeções cilíndricas (`miller`, `mercator`), o desvio de cada faixa de 15° por
-baixo do mapa. Com `--date`, o mapa mostra os desvios em vigor nesse dia e o riscado
+baixo do mapa. Gravado em `.svg` ou `.pdf`, que se podem ampliar, o mapa (em
+qualquer modo) mostra também, em letra pequena, os países pequenos e muitos
+arquipélagos (Açores, Madeira, Canárias, Havai, Espórades Equatoriais...). Com
+`--date`, o mapa mostra os desvios em vigor nesse dia e o riscado
 marca onde a hora de verão está em vigor. As outras opções funcionam como
 acima (`--limit` só se aplica ao mapa da hora solar).
 
 ```bash
 python solar_time_map.py --mode zones -p miller --lang pt   # time_zones_map.png
 python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
+python solar_time_map.py --mode zones -p miller --lang pt -o fusos.svg   # mais nomes
 ```
 
 | Opção | Significado |
