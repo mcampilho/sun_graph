@@ -123,7 +123,9 @@ As linhas castanhas são os limites entre desvios UTC e os números são os
 próprios desvios. No mar, cada fuso é prolongado um pouco a partir da costa
 (`--sea-margin`, 1,5° por omissão), para que ilhas pequenas como os Açores
 (−1), a Islândia (0), Kiribati (+14) ou as ilhas Chatham (+12¾) tenham linha e
-rótulo próprios. Para lá disso, o mar alto usa os fusos náuticos (faixas de 15°).
+rótulo próprios. As ilhas próximas com o mesmo desvio ficam dentro de uma só
+linha (`--island-join`), como o Havai, a Polinésia Francesa ou as ilhas do
+Chile no Pacífico. Para lá disso, o mar alto usa os fusos náuticos (faixas de 15°).
 
 Por omissão o mapa usa a hora padrão (sem hora de verão); `--date` mostra a
 hora legal em vigor num dado dia.
@@ -142,7 +144,9 @@ python solar_time_map.py -p miller --output miller.png --no-names
 `--mode zones` desenha antes um mapa clássico dos fusos horários: uma cor
 pastel por desvio UTC (as meias horas e os quartos de hora têm cores
 próprias), cores mais claras no mar alto e, riscados, os locais com hora de
-verão. Com `--date`, o mapa mostra os desvios em vigor nesse dia e o riscado
+verão. Mostra também os nomes dos oceanos e dos principais mares e baías e, nas
+projeções cilíndricas (`miller`, `mercator`), o desvio de cada faixa de 15° por
+baixo do mapa. Com `--date`, o mapa mostra os desvios em vigor nesse dia e o riscado
 marca onde a hora de verão está em vigor. As outras opções funcionam como
 acima (`--limit` só se aplica ao mapa da hora solar).
 
@@ -159,6 +163,7 @@ python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
 | `--date AAAA-MM-DD` | Usa a hora legal desse dia (com hora de verão) |
 | `--limit` | Diferença em horas mostrada com a cor mais intensa (por omissão 2; só no mapa da hora solar) |
 | `--sea-margin` | Quanto (em graus) cada fuso se prolonga para o mar (por omissão 1,5) |
+| `--island-join` | Junta ilhas com o mesmo desvio que distem até cerca do dobro destes graus (por omissão 4; 0 = uma linha à volta de cada ilha) |
 | `--res` | Resolução da grelha em graus (por omissão 0,1) |
 | `--simplify` | Tolerância de simplificação dos polígonos em graus (por omissão 0,02) |
 | `--no-names` | Esconde os nomes dos países |

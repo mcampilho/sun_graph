@@ -7,7 +7,7 @@ Neste PC usa-se `python3` (não `python`).
 | Script | O que gera | Saída típica |
 |---|---|---|
 | `solar_graph.py` | Gráfico anual de luz solar de um local: dia, crepúsculos civil/náutico/astronómico, noite, meio-dia e meia-noite solares, faixa detalhada de um dia. Elevação do Sol calculada minuto a minuto (funciona em latitudes polares). Textos em inglês ou português (`--lang en/pt`). Comparação de horários: `--mark HH:MM` (linhas tracejadas, repetível), `--dst legal/off/on` (hora de verão real, desligada, ou simulada onde não existe — regra europeia a norte, out→abr a sul; ver `simulated_dst`) e `--shift ±H` (muda a hora padrão); tudo em `local_offsets`, e a nota "Simulação" aparece a vermelho por baixo do título. Antes chamava-se `grafico_sol.py` (em português); sem estas opções e com `--lang pt` gera imagens idênticas às do original. | `images/solar_graph_tromso_{en,pt}.png`, `images/solar_graph_lisboa_{en,pt}.png` (`--day 06-21 --mark 08:30 --mark 17:30 --dst off`) |
-| `solar_time_map.py` | Mapa mundial "hora solar média − hora oficial" (vermelho = relógio adiantado, azul = atrasado). Textos e nomes de países em 10 idiomas (`--lang`; `--lang pt` para português). Substituiu a versão original só em português, `mapa_hora_solar.py`, já apagada. `--mode zones` gera antes um mapa clássico dos fusos (tipo Wikipédia): cor pastel por desvio (`zone_colours`, mais clara no mar), riscado onde há hora de verão (ou, com `--date`, onde está em vigor); os rótulos de desvio vão primeiro e cada parte em terra de um fuso tem rótulo próprio. Sem `--mode zones` o mapa sai idêntico ao de antes. | `solar_time_map.png` (padrão), `time_zones_map.png` (`--mode zones`), `images/time_zones_map_{en,pt}.png` (`--mode zones -p miller`), `equal-earth.png`, `miller.png`, `mapa_pt_robinson.png`, `exemplos_zh_ar_ja_ru.png` |
+| `solar_time_map.py` | Mapa mundial "hora solar média − hora oficial" (vermelho = relógio adiantado, azul = atrasado). Textos e nomes de países em 10 idiomas (`--lang`; `--lang pt` para português). Substituiu a versão original só em português, `mapa_hora_solar.py`, já apagada. `--mode zones` gera antes um mapa clássico dos fusos (tipo Wikipédia): cor pastel por desvio (`zone_colours`, mais clara no mar), riscado onde há hora de verão (ou, com `--date`, onde está em vigor), cada parte em terra de um fuso com rótulo próprio, nomes de oceanos/mares/baías (Natural Earth `marine.geojson`, `name_<lang>`) e, nas projeções cilíndricas, a fila de desvios das faixas por baixo do mapa. | `solar_time_map.png` (padrão), `time_zones_map.png` (`--mode zones`), `images/time_zones_map_{en,pt}.png` (`--mode zones -p miller`), `equal-earth.png`, `miller.png`, `mapa_pt_robinson.png`, `exemplos_zh_ar_ja_ru.png` |
 | `earth_moon_sun.py` | Animação Terra · Lua · Sol (3 atos: rotação de 24 h, mês sinódico com eclipses e órbita inclinada da Lua, ano em órbita kepleriana com estações). Ray tracer em numpy. Textos `--lang en/pt`. Antes chamava-se `earth_moon_sun_v2.py`; a versão anterior, mais simples, ficou em `earth_moon_sun_old.py` (a apagar). | `earth_moon_sun.mp4` (padrão); `earth_moon_sun_v2.mp4` é o vídeo completo em português desta versão, e o `earth_moon_sun.mp4` que existe é da versão antiga |
 
 Documentação para partilhar: `README.md` (inglês) e `README.pt.md` (português europeu), com ligações
@@ -54,11 +54,22 @@ python3 earth_moon_sun.py --scenes 2 --lang en
   continuidade nos 180°). As faixas náuticas só preenchem o mar aberto. Sem isto, as linhas e os
   rótulos dos Açores (−1), da Islândia (0), de Kiribati (+14), Samoa/Tonga/Tokelau (+13), Chatham
   (+12¾) etc. ficavam com o valor da faixa à volta.
+- `join_islands` (`--island-join`, padrão 4°): fecho morfológico (dilatar e erodir, com
+  transformadas de distância) da área de cada desvio, para que um arquipélago (Havai, Line Islands,
+  Polinésia Francesa, ilhas do Chile) fique numa só linha em vez de "bolinhas"; uma célula de mar só
+  é preenchida se o fuso civil mais próximo tiver esse desvio. Também mete a baía de Hudson nos
+  fusos do Canadá, como no mapa da Wikipédia. `--island-join 0` volta ao comportamento antigo.
 - As linhas e os rótulos de desvio são desenhados a partir dessa grelha vetorizada
   (`rasterio.features.shapes`) e unida por desvio; as cores em terra usam o desvio do fuso civil.
-- Ordem dos rótulos (o primeiro a ocupar o lugar ganha): nomes dos países principais (LABELRANK 1–2),
-  desvios das regiões pequenas (< 200 graus², ilhas com fuso próprio), restantes nomes, desvios das
-  regiões grandes. Cada rótulo de desvio tenta vários pontos dentro da região (`label_points`).
+- Nomes dos países: todos em maiúsculas, tamanho pela área (Mollweide), todos os países com
+  ≥ ~15 000 km². Cada nome tenta vários pontos dentro do país; no mapa dos fusos, os países pequenos
+  tentam ainda letra menor ao lado do país (Portugal fica ao lado de "ESPANHA"). A Bélgica e os
+  Países Baixos ainda não cabem no Miller.
+- Ordem dos rótulos (o primeiro a ocupar o lugar ganha): nomes dos países grandes, desvios das
+  regiões pequenas (< 200 graus², ilhas com fuso próprio), [fusos: nomes médios e desvio de cada
+  parte em terra], restantes nomes, [fusos: oceanos e mares], desvios das regiões grandes. Cada
+  rótulo de desvio tenta vários pontos dentro da região (`label_points`); no mapa dos fusos, um
+  desvio igual a menos de 6–8° de outro já escrito é omitido.
 
 ## Notas
 

@@ -121,7 +121,9 @@ Brown lines are the limits between UTC offsets, and the numbers are the offsets
 themselves. Over the sea, each time zone is extended a little from its coast
 (`--sea-margin`, 1.5° by default), so small islands such as the Azores (−1),
 Iceland (0), Kiribati (+14) or the Chatham Islands (+12¾) get their own line
-and label. Beyond that, the open ocean uses the nautical time zones (15° strips).
+and label. Nearby islands with the same offset are joined into one outline
+(`--island-join`), as for Hawaii, French Polynesia or Chile's Pacific islands.
+Beyond that, the open ocean uses the nautical time zones (15° strips).
 
 By default the map uses standard time (no daylight saving); `--date` shows the
 legal time in force on a given day instead.
@@ -139,7 +141,10 @@ python solar_time_map.py -p miller --output miller.png --no-names
 
 `--mode zones` draws a classic time-zone map instead: one pastel colour per
 UTC offset (half and quarter hours have colours of their own), paler colours
-over the open sea, and the places that use daylight saving time hatched. With
+over the open sea, and the places that use daylight saving time hatched. It
+also names the oceans and the main seas and bays, and, on cylindrical
+projections (`miller`, `mercator`), writes the offset of each 15° strip under
+the map. With
 `--date` the map shows the offsets in force on that day, and the hatching
 marks where daylight saving time is in force. All other options work as
 above (`--limit` only applies to the solar map).
@@ -157,6 +162,7 @@ python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
 | `--date YYYY-MM-DD` | Use the legal time of that day (daylight saving included) |
 | `--limit` | Difference in hours shown with the strongest colour (default 2; solar map only) |
 | `--sea-margin` | How far (degrees) each time zone extends into the sea (default 1.5) |
+| `--island-join` | Joins islands with the same offset up to about twice this many degrees apart (default 4; 0 = an outline around every island) |
 | `--res` | Grid resolution in degrees (default 0.1) |
 | `--simplify` | Polygon simplification tolerance in degrees (default 0.02) |
 | `--no-names` | Hide country names |

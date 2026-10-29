@@ -62,6 +62,7 @@ import rasterio.features
 from rasterio.transform import from_origin
 from scipy.ndimage import distance_transform_edt
 import shapely.geometry
+from shapely.ops import polylabel
 import cartopy.crs as ccrs
 
 warnings.filterwarnings("ignore", message="Geometry is in a geographic CRS")
@@ -77,6 +78,8 @@ URLS = {
                      "master/geojson/ne_50m_land.geojson"),
     "countries.geojson": ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
                           "master/geojson/ne_50m_admin_0_countries.geojson"),
+    "marine.geojson": ("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+                       "master/geojson/ne_50m_geography_marine_polys.geojson"),
 }
 
 # key: (cartopy factory, latitude limits or None for the whole globe)
@@ -100,6 +103,8 @@ ZONE_HALF_COLOR = "#c8acd9"
 ZONE_QUARTER_COLOR = "#e8a9c4"
 SEA_PALENESS = 0.55            # how much the sea colours are mixed with white
 HATCH_COLOR = "#7a5a46"
+OCEAN_COLOR = "#5f7f93"
+SEA_NAME_COLOR = "#6d8797"
 
 # ----------------------------------------------------------------------------
 # Translations
@@ -488,7 +493,38 @@ def load_timezones(path, date, tolerance):
 # ----------------------------------------------------------------------------
 # Grid (raster) of UTC offsets and of solar time − official time
 # ----------------------------------------------------------------------------
-def compute_grid(timezones, land, res, sea_margin):
+def join_islands(near_coast, nearest, radius, res):
+    """Closes the gaps of up to about 2·radius degrees between islands (and coasts)
+    with the same UTC offset, so an archipelago such as Hawaii, the Line Islands
+    or French Polynesia gets one outline instead of a ring around every island.
+
+    Morphological closing (dilation, then erosion) of each offset's area, done
+    with distance transforms; a sea cell is only filled when its nearest civil
+    zone has that offset, so different offsets never take each other's sea."""
+    r = radius / res
+    pad = int(np.ceil(2 * r)) + 2
+    wrap = lambda a: np.concatenate([a[:, -pad:], a, a[:, :pad]], axis=1)   # noqa: E731
+    area, near = wrap(near_coast), wrap(nearest)
+    joined = area.copy()
+    for v in np.unique(area[~np.isnan(area)]):
+        mask = area == v
+        # a closing never leaves the bounding box; the empty border lets it work
+        rows, cols = np.nonzero(mask.any(axis=1))[0], np.nonzero(mask.any(axis=0))[0]
+        y0, y1, x0, x1 = rows[0], rows[-1] + 1, cols[0], cols[-1] + 1
+        m = np.pad(mask[y0:y1, x0:x1], pad)
+        grown = distance_transform_edt(~m) <= r
+        closed = (distance_transform_edt(grown) > r)[pad:-pad, pad:-pad]
+        fill = closed & np.isnan(area[y0:y1, x0:x1]) & (near[y0:y1, x0:x1] == v)
+        joined[y0:y1, x0:x1][fill] = v
+    # fold the wrapped margins back onto the other side of the 180° meridian
+    out = joined[:, pad:-pad].copy()
+    for src, dst in ((joined[:, :pad], out[:, -pad:]), (joined[:, -pad:], out[:, :pad])):
+        take = np.isnan(dst) & ~np.isnan(src)
+        dst[take] = src[take]
+    return out
+
+
+def compute_grid(timezones, land, res, sea_margin, island_join):
     """Returns the UTC offset grid, the land, Antarctica and daylight-saving
     (land only) masks, and the zones as drawn.
 
@@ -497,8 +533,9 @@ def compute_grid(timezones, land, res, sea_margin):
     the Azores, Iceland or Kiribati would get the lines and labels of the strip
     around them (−2, −1, −11 ...). As on usual time-zone maps, every civil zone
     is therefore extended into the sea up to `sea_margin` degrees from its
-    coast (each sea cell takes the nearest civil zone); the nautical strips
-    only fill the open ocean beyond."""
+    coast (each sea cell takes the nearest civil zone), and nearby islands of
+    the same offset are joined (`island_join`, see join_islands); the nautical
+    strips only fill the open ocean beyond."""
     width, height = int(round(360 / res)), int(round(180 / res))
     transform = from_origin(-180, 90, res, res)
 
@@ -523,7 +560,10 @@ def compute_grid(timezones, land, res, sea_margin):
                                             return_indices=True)
     nearest = wrapped[iy, ix][:, pad:-pad]
     dist = dist[:, pad:-pad]
-    offset = np.where(dist <= sea_margin, nearest, sea)
+    near_coast = np.where(dist <= sea_margin, nearest, np.nan)
+    if island_join > 0:
+        near_coast = join_islands(near_coast, nearest, island_join, res)
+    offset = np.where(np.isnan(near_coast), sea, near_coast)
     offset = np.where(np.isnan(offset), nearest, offset)
 
     lat = 90 - res * (np.arange(height) + 0.5)
@@ -623,7 +663,7 @@ def country_name_column(countries):
 # ----------------------------------------------------------------------------
 # Drawing
 # ----------------------------------------------------------------------------
-def draw(offset, is_land, antarctica, dst, zones, land, countries, projection, limit,
+def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, projection, limit,
          date, names, output, show, mode, res):
     factory, lat_lim = PROJECTIONS[projection]
     pc = ccrs.PlateCarree()
@@ -670,12 +710,14 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, projection, l
     fig.canvas.draw()          # needed to measure texts
 
     # Labels, first come first served:
-    #   1. names of the main countries (label rank 1-2)
+    #   1. names of the large countries
     #   2. UTC offsets of small regions: islands with a zone of their own
     #      (Azores, Iceland, Kiribati, Chatham ...), which names would cover
-    #   3. names of the other countries
-    #   4. UTC offsets of the large regions (largest first)
-    # On the time-zone map the offsets are the main content: they all go first.
+    #   3. (time-zone map) names of the medium countries, then the UTC offset of
+    #      every large enough land part of a zone
+    #   4. names of the other countries
+    #   5. (time-zone map) names of the oceans, seas and bays
+    #   6. UTC offsets of the large regions (largest first)
     zones_map = mode == "zones"
     halo = [pe.withStroke(linewidth=2.2, foreground="white")]
     regions = regions.assign(area=regions.geometry.area).sort_values("area", ascending=False)
@@ -697,12 +739,63 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, projection, l
                     placed.append((v, p))
                     break
 
+    def inside_map(p):
+        return not lat_lim or lat_lim[0] + 1 < p.y < lat_lim[1] - 1
+
+    # Country names, all in capitals, sized by the country's area; when the
+    # usual spot is taken, a few other points inside the country are tried
     sel = countries.iloc[0:0]
     if names:
         col = country_name_column(countries)
-        sel = countries[(countries["LABELRANK"] <= 3) & (countries["CONTINENT"] != "Antarctica")]
-        sel = sel.sort_values(["LABELRANK", "POP_EST"], ascending=[True, False])
+        sel = countries[countries["CONTINENT"] != "Antarctica"]
+        area_km2 = sel.geometry.to_crs("ESRI:54009").area / 1e6       # Mollweide
+        size = np.clip(3.2 + 1.5 * np.log10(area_km2.clip(lower=1) / 1000), 0, 10.5)
+        sel = sel.assign(size=size)[size >= 5].sort_values("size", ascending=False)
+
+    def label_countries(rows):
+        for _, r in rows.iterrows():
+            name = (str(r[col]) if r[col] else str(r["NAME"])).upper()
+            main_part = max(getattr(r.geometry, "geoms", [r.geometry]), key=lambda g: g.area)
+            spots = [shapely.geometry.Point(r["LABEL_X"], r["LABEL_Y"])] + label_points(main_part, 5)[:6]
+            tries = [(r["size"], p) for p in spots]
+            if zones_map and r["size"] < 7.5:
+                # small countries in crowded areas (Portugal, Benelux): a smaller
+                # font, inside or just beside the country
+                x, y = r["LABEL_X"], r["LABEL_Y"]
+                beside = [shapely.geometry.Point(x + dx, y + dy)
+                          for dx, dy in ((-3, 0), (3, 0), (0, 2), (0, -2), (-5, 0), (5, 0),
+                                         (-4, 2), (4, 2), (-4, -2), (4, -2), (0, 3.5))]
+                tries += [(4.6, p) for p in spots + beside]
+            any(lab.text(p.x, p.y, shape(name), transform=pc, fontsize=fs,
+                         color="#1d1d1d", ha="center", va="center",
+                         fontweight="bold" if fs >= 8 else "normal",
+                         path_effects=[pe.withStroke(linewidth=1.6 if fs > 5 else 1.2,
+                                                     foreground="white")],
+                         zorder=5, margin=2 if fs > 5 else 1)
+                for fs, p in tries if inside_map(p))
+
+    def label_marine():
+        """Oceans (capitals, spaced letters) and the main seas, gulfs and bays."""
+        mcol = f"name_{LANG}" if f"name_{LANG}" in marine.columns else "name"
+        sea = marine[marine["scalerank"] <= 2].sort_values("scalerank")
+        for _, r in sea.iterrows():
+            name = str(r[mcol] or r["name_en"] or r["name"])
+            ocean = r["featurecla"] == "ocean"
+            if ocean and LANG not in ("zh", "ja", "ar"):
+                name = " ".join(name.upper())
+            main_part = max(getattr(r.geometry, "geoms", [r.geometry]), key=lambda g: g.area)
+            spots = [polylabel(main_part, tolerance=0.5)] + label_points(main_part, 5)[:4]
+            for p in filter(inside_map, spots):
+                if lab.text(p.x, p.y, shape(name), transform=pc,
+                            fontsize=10 if ocean else 6.5, style="italic",
+                            color=OCEAN_COLOR if ocean else SEA_NAME_COLOR,
+                            ha="center", va="center", zorder=5):
+                    break
+
+    label_countries(sel[sel["size"] >= 7.5])
+    label_offsets(regions[small & (regions["area"] >= 3)])
     if zones_map:
+        label_countries(sel[(sel["size"] >= 6) & (sel["size"] < 7.5)])
         # The land part of a zone often merges with the nautical strip of the same
         # offset (eastern USA and the Atlantic −5), so it gets a label of its own
         on_land = is_land & ~antarctica & ~np.isnan(offset)
@@ -712,26 +805,20 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, projection, l
                                                   transform=from_origin(-180, 90, res, res))],
             crs="EPSG:4326")
         land_regions = land_regions.assign(area=land_regions.geometry.area)
-        land_regions = land_regions[land_regions["area"] >= 8].sort_values("area", ascending=False)
-        label_offsets(regions[small & (regions["area"] >= 3)])
-        label_offsets(land_regions, skip_near=6)
-        label_offsets(regions[~small], skip_near=6)
-    for main in (True, False):
-        if not main and not zones_map:
-            label_offsets(regions[small & (regions["area"] >= 3)])
-        for _, r in sel[(sel["LABELRANK"] <= 2) == main].iterrows():
-            rank = int(r["LABELRANK"])
-            name = str(r[col]) if r[col] else str(r["NAME"])
-            name = name.upper() if rank <= 2 else name
-            if lat_lim and not (lat_lim[0] < r["LABEL_Y"] < lat_lim[1]):
-                continue
-            lab.text(r["LABEL_X"], r["LABEL_Y"], shape(name), transform=pc,
-                     fontsize={1: 9, 2: 7.5, 3: 6}[rank], color="#1d1d1d",
-                     ha="center", va="center", fontweight="bold" if rank == 1 else "normal",
-                     path_effects=[pe.withStroke(linewidth=1.6, foreground="white")], zorder=5)
+        land_regions = land_regions[land_regions["area"] >= 0.8].sort_values("area", ascending=False)
+        label_offsets(land_regions, skip_near=8)
+    label_countries(sel[sel["size"] < (6 if zones_map else 7.5)])
+    if zones_map:
+        label_marine()
+    label_offsets(regions[~small], skip_near=6 if zones_map else None)
 
-    if not zones_map:
-        label_offsets(regions[~small])
+    # Cylindrical maps: the offset of each 15° nautical strip under the map
+    if zones_map and lat_lim:
+        for h in range(-12, 13):
+            lon = min(max(h * 15, -176.25), 176.25)
+            ax.annotate(format_offset(h), (lon, lat_lim[0]), xycoords=pc._as_mpl_transform(ax),
+                        xytext=(0, -3), textcoords="offset points", ha="center", va="top",
+                        fontsize=8, fontweight="bold", color="#3b2a1e", annotation_clip=False)
 
     # Titles, colour scale and credits (mirrored for right-to-left languages)
     rtl = LANG in RTL
@@ -797,6 +884,10 @@ def main():
     p.add_argument("--sea-margin", type=float, default=1.5,
                    help="how far (degrees) each civil time zone extends into the sea "
                         "before the nautical zones take over (default: 1.5)")
+    p.add_argument("--island-join", type=float, default=4.0,
+                   help="join islands (and coasts) with the same UTC offset that are up to "
+                        "about twice this many degrees apart into one zone outline; "
+                        "0 = a separate outline around every island (default: 4)")
     p.add_argument("--no-names", action="store_true", help="hide country names")
     p.add_argument("--output", "-o",
                    help="output file: png, pdf or svg "
@@ -831,10 +922,12 @@ def main():
     timezones = load_timezones(paths["timezones.zip"], date, a.simplify)
     land = gpd.read_file(paths["land.geojson"])
     countries = gpd.read_file(paths["countries.geojson"])
+    marine = gpd.read_file(paths["marine.geojson"])
 
     output = a.output or ("time_zones_map.png" if a.mode == "zones" else "solar_time_map.png")
-    offset, is_land, antarctica, dst, zones = compute_grid(timezones, land, a.res, a.sea_margin)
-    draw(offset, is_land, antarctica, dst, zones, land, countries, a.projection, a.limit,
+    offset, is_land, antarctica, dst, zones = compute_grid(timezones, land, a.res, a.sea_margin,
+                                                            a.island_join)
+    draw(offset, is_land, antarctica, dst, zones, land, countries, marine, a.projection, a.limit,
          date, not a.no_names, output, a.show, a.mode, a.res)
 
 
