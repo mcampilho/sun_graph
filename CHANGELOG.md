@@ -12,6 +12,7 @@
 ### Changed
 - Python 3.10 or newer is required.
 - `except Exception` replaced by the specific errors in all three scripts.
+- Docstrings on every function and type hints on the calculation and helper functions.
 - The long `draw` and `compose` functions were split into smaller ones (output unchanged).
 
 ### Removed

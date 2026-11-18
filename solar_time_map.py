@@ -372,7 +372,7 @@ T = TEXTS["en"]        # active texts (set in main)
 LANG = "en"
 
 
-def normalise_language(code):
+def normalise_language(code: str | None) -> str | None:
     """'pt_PT.UTF-8', 'pt-BR', 'Portuguese_Portugal' ... → 'pt' (or None)."""
     if not code:
         return None
@@ -387,7 +387,7 @@ def normalise_language(code):
     return c if c in TEXTS else None
 
 
-def system_language():
+def system_language() -> str:
     """Language of the operating system / user session."""
     for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
         val = os.environ.get(var)
@@ -424,7 +424,7 @@ def system_language():
     return "en"
 
 
-def setup_fonts(lang):
+def setup_fonts(lang: str) -> None:
     """Pick a font able to show the language's script."""
     cands = FONT_CANDIDATES.get(lang)
     if not cands:
@@ -438,7 +438,7 @@ def setup_fonts(lang):
           "Texts may show as empty boxes.")
 
 
-def _native_complex_text():
+def _native_complex_text() -> bool:
     """matplotlib >= 3.11 joins Arabic letters and orders right-to-left itself."""
     try:
         major, minor = (int(x) for x in matplotlib.__version__.split(".")[:2])
@@ -450,7 +450,7 @@ def _native_complex_text():
 NATIVE_RTL = _native_complex_text()
 
 
-def shape(text):
+def shape(text: str) -> str:
     """Arabic needs letter joining and right-to-left ordering (older matplotlib)."""
     if LANG not in RTL or NATIVE_RTL:
         return text
@@ -462,14 +462,16 @@ def shape(text):
         return text
 
 
-def say(key, **kw):
+def say(key: str, **kw) -> None:
+    """Prints a message in the active language."""
     print(T[key].format(**kw))
 
 
 # ----------------------------------------------------------------------------
 # Data
 # ----------------------------------------------------------------------------
-def get_data(folder):
+def get_data(folder: str) -> dict[str, str]:
+    """Downloads the data files once into `folder` and returns {name: path}."""
     os.makedirs(folder, exist_ok=True)
     paths = {}
     for name, url in URLS.items():
@@ -483,7 +485,7 @@ def get_data(folder):
     return paths
 
 
-def utc_offset(tzid, date=None):
+def utc_offset(tzid: str, date: dt.date | None = None) -> tuple[float, bool]:
     """UTC offset (hours) of a time zone and whether it has daylight saving.
 
     Without date: standard time (no DST) = the smaller offset between January
@@ -504,6 +506,7 @@ def utc_offset(tzid, date=None):
 
 
 def load_timezones(path, date, tolerance):
+    """Reads the time-zone polygons with their UTC offset and daylight-saving flag, simplified."""
     say("reading")
     tz = gpd.read_file(f"zip://{path}")
     tz["offset"], tz["dst"] = zip(*(utc_offset(t, date) for t in tz["tzid"]))
@@ -515,7 +518,7 @@ def load_timezones(path, date, tolerance):
 # ----------------------------------------------------------------------------
 # Grid (raster) of UTC offsets and of solar time − official time
 # ----------------------------------------------------------------------------
-def join_islands(near_coast, nearest, radius, res):
+def join_islands(near_coast: np.ndarray, nearest: np.ndarray, radius: float, res: float) -> np.ndarray:
     """Closes the gaps of up to about 2·radius degrees between islands (and coasts)
     with the same UTC offset, so an archipelago such as Hawaii, the Line Islands
     or French Polynesia gets one outline instead of a ring around every island.
@@ -604,7 +607,7 @@ def compute_grid(timezones, land, res, sea_margin, island_join):
     return offset, is_land, antarctica, dst, zones
 
 
-def solar_difference(offset, is_land, antarctica, res):
+def solar_difference(offset: np.ndarray, is_land: np.ndarray, antarctica: np.ndarray, res: float) -> np.ndarray:
     """Local mean solar time − official time (hours), on land outside Antarctica."""
     lon = -180 + res * (np.arange(offset.shape[1]) + 0.5)
     diff = lon[None, :] / 15.0 - offset
@@ -613,7 +616,7 @@ def solar_difference(offset, is_land, antarctica, res):
     return diff
 
 
-def zone_colours(offset, is_land, antarctica):
+def zone_colours(offset: np.ndarray, is_land: np.ndarray, antarctica: np.ndarray) -> np.ndarray:
     """RGBA image of the time zones: a pastel colour per offset, paler at sea."""
     whole = np.isclose(offset, np.round(offset))
     half = np.isclose(np.mod(offset, 1), 0.5)
@@ -630,7 +633,8 @@ def zone_colours(offset, is_land, antarctica):
 # ----------------------------------------------------------------------------
 # Labels
 # ----------------------------------------------------------------------------
-def format_offset(h):
+def format_offset(h: float) -> str:
+    """UTC offset in hours as a label: +1, −5, +5½, +12¾ ..."""
     sign = "+" if h >= 0 else "−"
     a = abs(h)
     whole = int(a)
@@ -649,6 +653,7 @@ class Labeller:
         self.boxes = []
 
     def text(self, *args, margin=2, **kw):
+        """Writes the text unless it leaves the map or overlaps an earlier one; returns it, or None."""
         t = self.ax.text(*args, **kw)
         box = t.get_window_extent(self.renderer).padded(margin)
         bb = self.ax.bbox
@@ -666,7 +671,7 @@ def regions_by_offset(timezones):
     return merged, merged.explode(index_parts=False).reset_index(drop=True)
 
 
-def label_points(geom, n=7):
+def label_points(geom, n: int = 7) -> list:
     """Candidate label positions inside a region: its representative point first,
     then other inner points nearest to it (used when a country name is in the way)."""
     p0 = geom.representative_point()
@@ -677,7 +682,8 @@ def label_points(geom, n=7):
     return [p0] + sorted(pts, key=p0.distance)
 
 
-def country_name_column(countries):
+def country_name_column(countries) -> str:
+    """Column of the countries table with the names in the active language."""
     col = f"NAME_{LANG.upper()}"
     return col if col in countries.columns else "NAME"
 
@@ -702,7 +708,7 @@ def country_sizes(countries, col, detail, small_font):
     return sel[sel["size"] >= (small_font if detail else 5)].sort_values("size", ascending=False)
 
 
-def two_lines(name, longer_than=18):
+def two_lines(name: str, longer_than: int = 18) -> str:
     """Splits a long name at the space nearest its middle (very long names,
     such as "República Democrática do Congo", in three lines)."""
     if len(name) <= longer_than or " " not in name or LANG in ("zh", "ja"):
@@ -715,7 +721,7 @@ def two_lines(name, longer_than=18):
     return name[:i] + "\n" + name[i + 1:]
 
 
-def beside(x, y):
+def beside(x: float, y: float) -> list:
     """Beside a small country or island: a ring of spots around (x, y)."""
     return [shapely.geometry.Point(x + dx, y + dy)
             for dx, dy in ((-3, 0), (3, 0), (0, 2), (0, -2), (-5, 0), (5, 0),
@@ -744,9 +750,11 @@ class MapLabels:
         self.placed = []            # (offset, point) of every offset label
 
     def inside_map(self, p):
+        """Whether a point is away from the edge of a cylindrical map."""
         return not self.lat_lim or self.lat_lim[0] + 1 < p.y < self.lat_lim[1] - 1
 
     def label_offsets(self, sel, skip_near=None):
+        """Writes the UTC offset of each region, skipping a region whose offset is written within `skip_near` degrees."""
         lat_lim = self.lat_lim
         for g, v in zip(sel.geometry, sel["offset"]):
             if skip_near is not None and any(
@@ -765,6 +773,7 @@ class MapLabels:
     def label_land_offsets(self, offset, is_land, antarctica, res):
         # The land part of a zone often merges with the nautical strip of the same
         # offset (eastern USA and the Atlantic −5), so it gets a label of its own
+        """Writes the offset of every large enough land part of a zone."""
         on_land = is_land & ~antarctica & ~np.isnan(offset)
         land_regions = gpd.GeoDataFrame(
             [{"offset": float(v), "geometry": shapely.geometry.shape(g)}
@@ -912,7 +921,7 @@ def draw_layers(ax, pc, offset, is_land, antarctica, dst, zones, land, countries
     return im, regions
 
 
-def draw_strip_offsets(ax, pc, lat_lim):
+def draw_strip_offsets(ax, pc, lat_lim) -> None:
     """Cylindrical maps: the offset of each 15° nautical strip under the map."""
     for h in range(-12, 13):
         lon = min(max(h * 15, -176.25), 176.25)
@@ -956,6 +965,7 @@ def draw_titles_and_legend(fig, im, projection, limit, date, zones_map):
 
 def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, islands,
          projection, limit, date, names, output, show, mode, res):
+    """Draws the whole map (see place_labels for the texts) and saves or shows it."""
     factory, lat_lim = PROJECTIONS[projection]
     pc = ccrs.PlateCarree()
 
@@ -988,7 +998,8 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, islan
 
 
 # ----------------------------------------------------------------------------
-def main():
+def main() -> None:
+    """Command-line entry point."""
     global T, LANG
     p = argparse.ArgumentParser(
         description="World map of the difference between solar time and official time.")

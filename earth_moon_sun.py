@@ -232,7 +232,8 @@ def parse_city(text_):
     raise SystemExit(f"Unknown city '{text_}'. Use 'lat,lon,name' or one of: {', '.join(sorted(CITIES))}")
 
 
-def system_language():
+def system_language() -> str:
+    """Language of the system if the animation has texts in it, else English."""
     for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
         v = os.environ.get(var, "")
         if v[:2].lower() in TEXTS:
@@ -256,7 +257,8 @@ def system_language():
     return "en"
 
 
-def num(v, dec=1):
+def num(v: float, dec: int = 1) -> str:
+    """Number with the decimal separator of the active language."""
     s = f"{v:.{dec}f}"
     return s.replace(".", ",") if T is TEXTS["pt"] else s
 
@@ -264,21 +266,25 @@ def num(v, dec=1):
 # ----------------------------------------------------------------------------
 # Small vector helpers
 # ----------------------------------------------------------------------------
-def norm(v):
+def norm(v: np.ndarray) -> np.ndarray:
+    """Unit vectors (along the last axis)."""
     return v / np.linalg.norm(v, axis=-1, keepdims=True)
 
 
-def rot_y(a):
+def rot_y(a: float) -> np.ndarray:
+    """Rotation matrix about the Y axis."""
     c, s = math.cos(a), math.sin(a)
     return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]])
 
 
-def rot_z(a):
+def rot_z(a: float) -> np.ndarray:
+    """Rotation matrix about the Z axis."""
     c, s = math.cos(a), math.sin(a)
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
-def smoothstep(x):
+def smoothstep(x: float) -> float:
+    """Smooth 0 → 1 ramp, clamped to [0, 1]."""
     x = min(max(x, 0.0), 1.0)
     return x * x * (3 - 2 * x)
 
@@ -311,22 +317,24 @@ def earth_lon_dist(t):
     return nu + PERI_LON, r
 
 
-def earth_pos(t):
+def earth_pos(t: float) -> np.ndarray:
+    """Position of the Earth on its orbit (Sun at the origin) at time t (days)."""
     lam, r = earth_lon_dist(t)
     return np.array([r * math.cos(lam), r * math.sin(lam), 0.0])
 
 
-def sun_dir(t):
+def sun_dir(t: float) -> np.ndarray:
+    """Unit vector from the Earth to the Sun at time t."""
     e = earth_pos(t)
     return -e / np.linalg.norm(e)
 
 
-def solar_longitude(t):
+def solar_longitude(t: float) -> float:
     """Sun's ecliptic longitude: 0 = March equinox, 90 = June solstice ..."""
     return (math.degrees(earth_lon_dist(t)[0]) + 90.0) % 360.0
 
 
-def time_of_longitude(ls, t_from):
+def time_of_longitude(ls: float, t_from: float) -> float:
     """First time after t_from when the solar longitude equals ls (degrees)."""
     t = t_from
     for _ in range(40):
@@ -337,7 +345,7 @@ def time_of_longitude(ls, t_from):
     return t if t >= t_from - 1 else t + YEAR
 
 
-def earth_rotation(t):
+def earth_rotation(t: float) -> float:
     """Rotation angle so that it is 12:00 at Greenwich when frac(t) = 0.5."""
     s_eq = M_TILT.T @ sun_dir(t)
     alpha = math.atan2(s_eq[1], s_eq[0])
@@ -361,7 +369,8 @@ def moon_state(t, dist, inc=MOON_INC):
     return rel, np.stack([x_m, y_m, z_m]), elong % (2 * math.pi)
 
 
-def date_label(t):
+def date_label(t: float) -> str:
+    """'21 Jun · 12:00 UTC' for a time in days since the June solstice of 2026."""
     d = np.datetime64("2026-06-21T00:00") + np.timedelta64(int(round(t * 1440)), "m")
     s = str(d)
     month = int(s[5:7]) - 1
@@ -394,6 +403,7 @@ def periodic_noise(h, w, octaves=6, base=4, seed=0, persistence=0.55):
 
 
 def land_mask(w, h, cache):
+    """Blurred land mask (0–1) from Natural Earth; all zeros when offline."""
     path = os.path.join(cache, "ne_50m_land.geojson")
     if not os.path.exists(path):
         try:
@@ -423,6 +433,7 @@ def land_mask(w, h, cache):
 
 
 def earth_textures(cache, w=2048, h=1024):
+    """Albedo, water mask and cloud textures of the Earth."""
     land = land_mask(w, h, cache)
     lat = np.linspace(90, -90, h, endpoint=False)[:, None] - 90 / h
     lon = np.linspace(-180, 180, w, endpoint=False)[None, :] + 180 / w
@@ -502,6 +513,7 @@ def city_lights(cache, w=2048, h=1024):
 
 
 def moon_texture(w=1024, h=512):
+    """Procedural albedo texture of the Moon: maria and bright craters."""
     lat = np.radians(np.linspace(90, -90, h, endpoint=False)[:, None] - 90 / h)
     lon = np.radians(np.linspace(-180, 180, w, endpoint=False)[None, :] + 180 / w)
     n1 = periodic_noise(h, w, seed=11, base=8, octaves=7)
@@ -527,6 +539,7 @@ def moon_texture(w=1024, h=512):
 
 
 def star_map(w=4096, h=2048, n=9000, seed=3):
+    """Procedural sky texture: stars and a faint Milky Way band."""
     rng = np.random.default_rng(seed)
     m = np.zeros((h, w), np.float32)
     z = rng.uniform(-1, 1, n)
@@ -546,6 +559,7 @@ def star_map(w=4096, h=2048, n=9000, seed=3):
 # Ray tracer
 # ----------------------------------------------------------------------------
 class Camera:
+    """Pinhole camera: ray directions of every pixel and projection of 3D points."""
     def __init__(self, pos, target, fov, w, h, up=(0, 0, 1)):
         self.pos = np.asarray(pos, float)
         self.f = norm(np.asarray(target, float) - self.pos)
@@ -570,7 +584,8 @@ class Camera:
                 z, np.linalg.norm(v, axis=-1))
 
 
-def hit_sphere(o, d, c, r):
+def hit_sphere(o: np.ndarray, d: np.ndarray, c: np.ndarray, r: float) -> tuple:
+    """Distance along each ray to a sphere (inf if missed), and the ray's dot product and closest distance to its centre."""
     oc = (o - c).astype(np.float32)
     b = d @ oc
     cc = float(oc @ oc - r * r)
@@ -617,6 +632,7 @@ def shadow_fraction(p, light_dir, occ_c, occ_r):
 
 
 def sample(tex, lat, lon):
+    """Texture value at latitude/longitude (radians), nearest pixel."""
     h, w = tex.shape[:2]
     y = ((0.5 - lat / math.pi) * h).astype(int).clip(0, h - 1)
     x = (((lon / (2 * math.pi)) + 0.5) * w).astype(int) % w
@@ -624,6 +640,7 @@ def sample(tex, lat, lon):
 
 
 class World:
+    """Textures of the scene: Earth, city lights, Moon and stars."""
     def __init__(self, cache):
         print(T["textures"])
         self.albedo, self.water, self.clouds = earth_textures(cache)
@@ -742,6 +759,7 @@ def render(world, cam, st, sun_r=SUN_R):
 # Overlays (depth-tested 3D lines, text)
 # ----------------------------------------------------------------------------
 def draw_line3d(img, zbuf, cam, pts, color, alpha, width=1, dash=0):
+    """Draws a 3D polyline, hidden where a sphere is in front of it."""
     if alpha <= 0.01:
         return
     px, py, z, dist = cam.project(pts)
@@ -759,6 +777,7 @@ def draw_line3d(img, zbuf, cam, pts, color, alpha, width=1, dash=0):
 
 
 def circle_pts(center, radius, normal, n=6000):
+    """Points of a circle in 3D."""
     normal = norm(np.asarray(normal, float))
     a = norm(np.cross(normal, [1, 0, 0] if abs(normal[0]) < 0.9 else [0, 1, 0]))
     b = np.cross(normal, a)
@@ -767,11 +786,13 @@ def circle_pts(center, radius, normal, n=6000):
 
 
 def line_pts(p0, p1, n=400):
+    """Points of a straight 3D line."""
     s = np.linspace(0, 1, n)[:, None]
     return p0 + (p1 - p0) * s
 
 
 class Fonts:
+    """Fonts of the overlays, scaled with the video width."""
     def __init__(self, scale):
         reg = bold = None
         try:
@@ -799,6 +820,7 @@ class Fonts:
 
 
 def text(draw, xy, s, font, fill=(255, 255, 255), anchor="la", stroke=2):
+    """Text with a dark outline."""
     draw.text(xy, s, font=font, fill=fill, anchor=anchor, stroke_width=stroke,
               stroke_fill=(0, 0, 0))
 
@@ -870,11 +892,13 @@ def segment_time(i, s):
     return t, dt / dur
 
 
-def lerp(a, b, s):
+def lerp(a: float, b: float, s: float) -> float:
+    """Linear interpolation from a to b."""
     return a + (b - a) * s
 
 
 def camera_params(state, t):
+    """Distance, azimuth, elevation (radians), field of view and target weight of a state, at time t."""
     dist, az, mode, el, fov, tw = state["cam"]
     az = math.radians(az)
     if mode == "rel":
@@ -883,7 +907,8 @@ def camera_params(state, t):
     return dist, az, math.radians(el), fov, tw
 
 
-def frame_state(seg, s, theta, w_illus):
+def frame_state(seg: tuple, s: float, theta: float, w_illus: float) -> dict:
+    """Everything needed to render one frame: positions, sizes, camera, labels."""
     _, dur, t0, t1, a, b, title, inset, _ = seg
     sa, sb = STATES[a], STATES[b]
     k = smoothstep(s) if a != b else s
@@ -918,6 +943,7 @@ def frame_state(seg, s, theta, w_illus):
 # Insets and HUD
 # ----------------------------------------------------------------------------
 def moon_inset(world, st, size):
+    """The Moon seen from the Earth, with the Sun at its real apparent size."""
     E, M, Rm = st["E"], st["M"], st["Rm"]
     dist = np.linalg.norm(M - E)
     fov = math.degrees(2 * math.atan(Rm / dist) / 0.72)
@@ -940,6 +966,7 @@ def draw_reference_lines(img, zb, cam, E, Re, alpha, n=2500):
 
 
 def surface_point(st, lat, lon):
+    """Point on the Earth's surface (and its normal) for a latitude and longitude in radians."""
     q = np.array([math.cos(lat) * math.cos(lon), math.cos(lat) * math.sin(lon), math.sin(lat)])
     n = M_TILT @ rot_z(st["theta"]) @ q
     return st["E"] + n * st["Re"] * 1.003, n
@@ -969,7 +996,8 @@ def sun_elevation_day(t, lat, lon):
     return hours, np.array(el)
 
 
-def day_length(t, lat):
+def day_length(t: float, lat: float) -> float:
+    """Hours of daylight at a latitude (radians) at time t."""
     s_eq = M_TILT.T @ sun_dir(t)
     dec = math.asin(np.clip(s_eq[2], -1, 1))
     c = (math.sin(math.radians(-0.833)) - math.sin(lat) * math.sin(dec)) / (math.cos(lat) * math.cos(dec))
@@ -982,6 +1010,7 @@ TWILIGHT_COLORS = [(-90, -18, (46, 66, 77)), (-18, -12, (87, 103, 111)), (-12, -
 
 def draw_chart(dr, box, xs, ys, xr, yr, fonts, sc, title, xticks, yticks, marker_x=None,
                bands=None, fill=None, curve=(232, 25, 28)):
+    """Small line chart with optional background bands, fill and a marker."""
     x0, y0, x1, y1 = box
     X = lambda v: x0 + (v - xr[0]) / (xr[1] - xr[0]) * (x1 - x0)
     Y = lambda v: y1 - (v - yr[0]) / (yr[1] - yr[0]) * (y1 - y0)
@@ -1009,6 +1038,7 @@ def draw_chart(dr, box, xs, ys, xr, yr, fonts, sc, title, xticks, yticks, marker
 
 
 def draw_line_legend(dr, x, y, fonts, sc):
+    """Legend of the equator, tropics and polar circles."""
     items = [(T["legend_eq"], (255, 255, 255)), (T["legend_trop"], (255, 209, 77)),
              (T["legend_polar"], (128, 217, 255))]
     for name, col in items:
@@ -1018,6 +1048,7 @@ def draw_line_legend(dr, x, y, fonts, sc):
 
 
 def season_inset(world, st, size):
+    """The Earth seen from the side, to show the tilt; returns the image, whether the Sun is on the left, the camera and the depth buffer."""
     E, Re = st["E"], st["Re"]
     s = st["sun_dir"]
     side = norm(np.cross(s, [0, 0, 1]))
@@ -1032,18 +1063,21 @@ def season_inset(world, st, size):
     return img, sun_px < size / 2, cam, zb
 
 
-def season_names(t):
+def season_names(t: float) -> tuple[str, str]:
+    """Seasons of the northern and southern hemispheres at time t."""
     ls = solar_longitude(t)
     i = int(ls // 90) % 4                       # 0 spring(N) 1 summer 2 autumn 3 winter
     return T["seasons"][i], T["seasons"][(i + 2) % 4]
 
 
-def phase_name(elong):
+def phase_name(elong: float) -> str:
+    """Name of the Moon phase for an elongation in radians."""
     i = int(((math.degrees(elong) + 22.5) % 360) // 45)
     return T["phases"][i]
 
 
-def solar_eclipse_now(st):
+def solar_eclipse_now(st: dict) -> bool:
+    """Whether the Moon's shadow reaches the Earth."""
     rel = st["M"] - st["E"]
     s = st["sun_dir"]
     along = rel @ s
@@ -1052,7 +1086,8 @@ def solar_eclipse_now(st):
     return along > 0 and perp < st["Re"] + pen
 
 
-def lunar_eclipse_now(st):
+def lunar_eclipse_now(st: dict) -> bool:
+    """Whether the Moon is in the Earth's shadow."""
     f = shadow_fraction(st["M"][None], norm(-st["M"])[None], st["E"], st["Re"])[0]
     return f > 0.3
 
@@ -1101,6 +1136,7 @@ def draw_guides(img, zb, cam, st):
 
 
 def sun_mark(dr, x, y, r, sc):
+    """Ring around the sub-solar point."""
     dr.ellipse([x - r, y - r, x + r, y + r], outline=(255, 220, 80), width=max(2, int(2 * sc)))
 
 
@@ -1243,6 +1279,7 @@ def draw_season_inset(out, dr, st, fonts, w, m, sc):
 
 
 def compose(world, st, fonts, w, h):
+    """One frame: the rendered scene plus guides, labels, titles and insets."""
     pos, target, fov = st["cam"]
     cam = Camera(pos, target, fov, w, h)
     img, zb = render(world, cam, st)
@@ -1268,7 +1305,7 @@ def compose(world, st, fonts, w, h):
 
 
 # ----------------------------------------------------------------------------
-def build_frames(fps, speed, scenes, step):
+def build_frames(fps: int, speed: float, scenes: set, step: int) -> list:
     """List of (segment, fraction, displayed rotation angle, illustrative weight).
 
     When time runs faster than ~1 day per second the real rotation would
@@ -1298,7 +1335,8 @@ def build_frames(fps, speed, scenes, step):
 WORLD = None
 
 
-def main():
+def main() -> None:
+    """Command-line entry point."""
     global T, WORLD
     p = argparse.ArgumentParser(description="Animated Earth–Moon–Sun model (rotation, phases, eclipse, seasons).")
     p.add_argument("--output", "-o", default="earth_moon_sun.mp4", help="video file (.mp4) (default: %(default)s)")

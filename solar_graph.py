@@ -113,7 +113,7 @@ T = TEXTS["en"]        # active texts (set in main)
 LANG = "en"
 
 
-def normalise_language(code):
+def normalise_language(code: str | None) -> str | None:
     """'pt_PT.UTF-8', 'pt-BR', 'Portuguese_Portugal' ... → 'pt' (or None)."""
     if not code:
         return None
@@ -125,7 +125,7 @@ def normalise_language(code):
     return c if c in TEXTS else None
 
 
-def system_language():
+def system_language() -> str:
     """Language of the operating system / user session (English if not supported)."""
     for var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
         val = os.environ.get(var)
@@ -154,7 +154,7 @@ def system_language():
 # ----------------------------------------------------------------------------
 # Location
 # ----------------------------------------------------------------------------
-def geocode(place):
+def geocode(place: str) -> tuple[str, float, float]:
     """Turns 'City, Country' into (name, lat, lon) using OpenStreetMap."""
     from geopy.geocoders import Nominatim
     geo = Nominatim(user_agent="solar_graph_python")
@@ -164,7 +164,8 @@ def geocode(place):
     return r.address.split(",")[0].strip(), r.latitude, r.longitude
 
 
-def find_timezone(lat, lon):
+def find_timezone(lat: float, lon: float) -> str:
+    """IANA time zone of a point; at sea or in Antarctica, the nautical zone Etc/GMT±N from the longitude."""
     from timezonefinder import TimezoneFinder
     tz = TimezoneFinder().timezone_at(lat=lat, lng=lon)
     if tz is None:  # ocean / Antarctica: approximate zone from the longitude
@@ -176,7 +177,7 @@ def find_timezone(lat, lon):
 # ----------------------------------------------------------------------------
 # Astronomy (NOAA algorithms, ~1 minute accuracy)
 # ----------------------------------------------------------------------------
-def sun_position(jd):
+def sun_position(jd: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Returns (declination [rad], equation of time [min]) for Julian days."""
     T = (jd - 2451545.0) / 36525.0
     L0 = np.radians((280.46646 + T * (36000.76983 + 0.0003032 * T)) % 360)
@@ -198,7 +199,7 @@ def sun_position(jd):
     return decl, eot
 
 
-def sun_elevation(unix_s, lat, lon):
+def sun_elevation(unix_s: np.ndarray, lat: float, lon: float) -> np.ndarray:
     """Sun elevation (degrees) for UTC instants given in Unix seconds."""
     jd = unix_s / 86400.0 + 2440587.5
     decl, eot = sun_position(jd)
@@ -212,7 +213,8 @@ def sun_elevation(unix_s, lat, lon):
 # ----------------------------------------------------------------------------
 # Yearly grid (days x minutes, in local time)
 # ----------------------------------------------------------------------------
-def local_offsets(dates, tz, lat, dst="legal", shift=0.0):
+def local_offsets(dates: list[dt.date], tz: ZoneInfo, lat: float, dst: str = "legal",
+                  shift: float = 0.0) -> tuple[np.ndarray, bool]:
     """UTC offset (minutes) of every local minute of every day.
 
     dst:   "legal" follows the rules of the time zone (daylight saving included);
@@ -245,7 +247,7 @@ def local_offsets(dates, tz, lat, dst="legal", shift=0.0):
     return off + shift * 60, has_dst
 
 
-def simulated_dst(dates, std, lat):
+def simulated_dst(dates: list[dt.date], std: np.ndarray, lat: float) -> np.ndarray:
     """True for the local minutes that fall in a simulated daylight-saving period.
 
     Northern hemisphere: European rule, from the last Sunday of March to the
@@ -277,7 +279,8 @@ def simulated_dst(dates, std, lat):
     return (t >= start) | (t < end)
 
 
-def compute(lat, lon, tz, year, dst="legal", shift=0.0):
+def compute(lat: float, lon: float, tz: ZoneInfo, year: int, dst: str = "legal", shift: float = 0.0) -> tuple:
+    """Phase, elevation and solar noon/midnight (local hours) of every minute of the year, and whether the zone has daylight saving."""
     dates = [dt.date(year, 1, 1) + dt.timedelta(days=k)
              for k in range((dt.date(year + 1, 1, 1) - dt.date(year, 1, 1)).days)]
     utc_midnight = np.array([dt.datetime(d.year, d.month, d.day,
@@ -306,12 +309,13 @@ def compute(lat, lon, tz, year, dst="legal", shift=0.0):
 # ----------------------------------------------------------------------------
 # Text for one day
 # ----------------------------------------------------------------------------
-def hhmm(m):
+def hhmm(m: float) -> str:
+    """Minutes of the day as 'HH:MM' (1440 or more gives 00:00)."""
     m = int(round(m)) % 1440 if m < 1440 else 0
     return f"{m // 60:02d}:{m % 60:02d}"
 
 
-def intervals(row, k):
+def intervals(row: np.ndarray, k: int) -> list[tuple[int, int]]:
     """[start, end] intervals (minutes) in which the phase of one day is k."""
     inside = np.concatenate(([False], row == k, [False]))
     d = np.diff(inside.astype(int))
@@ -322,7 +326,7 @@ def intervals(row, k):
 # ----------------------------------------------------------------------------
 # Graph
 # ----------------------------------------------------------------------------
-def plot_with_breaks(ax, x, y, color):
+def plot_with_breaks(ax, x: np.ndarray, y: np.ndarray, color: str) -> None:
     """Draws the line, breaking it where it jumps (clock change or wrap at 24 h)."""
     y = y.copy()
     jumps = np.where(np.abs(np.diff(y)) > 0.4)[0]
@@ -332,12 +336,12 @@ def plot_with_breaks(ax, x, y, color):
     ax.plot(x, y, color=color, lw=1.4)
 
 
-def mark_line(ax, value, vertical=False):
+def mark_line(ax, value: float, vertical: bool = False) -> None:
     """Thin line of white dashes with dark gaps, visible on day and night colours."""
     (ax.axvline if vertical else ax.axhline)(value, **MARK_STYLE)
 
 
-def clock_note(dst, shift, has_dst):
+def clock_note(dst: str, shift: float, has_dst: bool) -> str:
     """Text describing a simulated clock, or '' for the legal time."""
     notes = []
     if dst == "off" and has_dst:
@@ -453,7 +457,7 @@ def draw_legend(fig, spec, row, noon, midnight, marks):
                  color="#777", transform=axl.transAxes)
 
 
-def draw_polar_note(fig, phase):
+def draw_polar_note(fig, phase: np.ndarray) -> None:
     """Number of days with midnight sun and of days without sunrise."""
     never_sets = np.all(phase == 4, axis=1).sum()
     never_rises = np.all(phase < 4, axis=1).sum()
@@ -469,6 +473,7 @@ def draw_polar_note(fig, phase):
 
 def draw(name, lat, lon, tz_name, year, day, output, show,
          dst="legal", shift=0.0, marks=()):
+    """Draws the yearly graph, the strip and legend of one day, and saves or shows the figure."""
     tz = ZoneInfo(tz_name)
     dates, phase, elev, noon, midnight, has_dst = compute(lat, lon, tz, year, dst, shift)
     if dst == "off" and not has_dst:
@@ -496,7 +501,7 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
 
 
 # ----------------------------------------------------------------------------
-def parse_time(text):
+def parse_time(text: str) -> float:
     """'8:30', '08:30' or '17' → hours as a float (8.5, 8.5, 17.0)."""
     try:
         h, _, m = text.partition(":")
@@ -508,7 +513,8 @@ def parse_time(text):
     return value
 
 
-def main():
+def main() -> None:
+    """Command-line entry point."""
     global T, LANG
     p = argparse.ArgumentParser(description="Yearly sunlight graph.")
     p.add_argument("place", nargs="?", help='city and country, e.g. "Oslo, Norway"')
