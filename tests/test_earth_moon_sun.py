@@ -52,7 +52,7 @@ def test_moon_state_keeps_its_distance_and_faces_the_earth():
 
 
 def test_moon_phase_names_cover_the_whole_cycle():
-    ems.T = ems.TEXTS["en"]
+    ems.Active.T = ems.TEXTS["en"]
     names = {ems.phase_name(math.radians(a)) for a in range(0, 360, 45)}
     assert len(names) == 8
 

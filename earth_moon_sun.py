@@ -48,6 +48,7 @@ Examples:
 """
 
 import argparse
+import functools
 import json
 import locale
 import math
@@ -186,7 +187,6 @@ TEXTS = {
         "frames_saved": "imageio-ffmpeg not found: frames saved in {path}",
     },
 }
-T = TEXTS["en"]
 
 CITIES = {
     "lisboa": ("Lisboa", 38.72, -9.14), "lisbon": ("Lisbon", 38.72, -9.14),
@@ -201,8 +201,12 @@ CITIES = {
     "cape town": ("Cape Town", -33.92, 18.42), "tokyo": ("Tokyo", 35.68, 139.69),
     "sydney": ("Sydney", -33.87, 151.21), "singapore": ("Singapore", 1.35, 103.82),
 }
-CITY = CITIES["lisboa"]
-HEMI_SOUTH = False
+class Active:
+    """State of the run, set once by main(): the texts, the reference city and the Moon view."""
+
+    T = TEXTS["en"]
+    city = CITIES["lisboa"]
+    hemi_south = False
 
 
 def parse_city(text_):
@@ -260,7 +264,7 @@ def system_language() -> str:
 def num(v: float, dec: int = 1) -> str:
     """Number with the decimal separator of the active language."""
     s = f"{v:.{dec}f}"
-    return s.replace(".", ",") if T is TEXTS["pt"] else s
+    return s.replace(".", ",") if Active.T is TEXTS["pt"] else s
 
 
 # ----------------------------------------------------------------------------
@@ -374,7 +378,7 @@ def date_label(t: float) -> str:
     d = np.datetime64("2026-06-21T00:00") + np.timedelta64(int(round(t * 1440)), "m")
     s = str(d)
     month = int(s[5:7]) - 1
-    return f"{int(s[8:10])} {T['months'][month]} · {s[11:16]} UTC"
+    return f"{int(s[8:10])} {Active.T['months'][month]} · {s[11:16]} UTC"
 
 
 # ----------------------------------------------------------------------------
@@ -408,11 +412,11 @@ def land_mask(w, h, cache):
     if not os.path.exists(path):
         try:
             os.makedirs(cache, exist_ok=True)
-            print(T["downloading"])
+            print(Active.T["downloading"])
             urllib.request.urlretrieve(LAND_URL, path + ".part")
             os.replace(path + ".part", path)
         except OSError:   # includes urllib's URLError and HTTPError
-            print(T["offline"])
+            print(Active.T["offline"])
             return np.zeros((h, w), np.float32)
     with open(path, encoding="utf-8") as f:
         gj = json.load(f)
@@ -491,7 +495,7 @@ def city_lights(cache, w=2048, h=1024):
             urllib.request.urlretrieve(PLACES_URL, path + ".part")
             os.replace(path + ".part", path)
         except OSError:
-            print(T["no_lights"])
+            print(Active.T["no_lights"])
             return np.zeros((h, w), np.float32)
     with open(path, encoding="utf-8") as f:
         feats = json.load(f)["features"]
@@ -642,7 +646,7 @@ def sample(tex, lat, lon):
 class World:
     """Textures of the scene: Earth, city lights, Moon and stars."""
     def __init__(self, cache):
-        print(T["textures"])
+        print(Active.T["textures"])
         self.albedo, self.water, self.clouds = earth_textures(cache)
         self.lights = city_lights(cache)
         self.moon_tex = moon_texture()
@@ -863,6 +867,7 @@ SEGMENTS = [
 ]
 
 
+@functools.lru_cache(maxsize=None)
 def boundary_speeds():
     """Speed (days per second) at each segment boundary, continuous on both sides.
     Clamped to ≤2.1× the slower neighbour so the time curve never goes backwards."""
@@ -874,18 +879,13 @@ def boundary_speeds():
     return v
 
 
-SPEEDS = None
-
-
 def segment_time(i, s):
     """Time (days) and speed (days/s) inside segment i at fraction s (cubic Hermite)."""
-    global SPEEDS
-    if SPEEDS is None:
-        SPEEDS = boundary_speeds()
+    speeds = boundary_speeds()
     _, dur, t0, t1, *_ = SEGMENTS[i]
     if not dur or t1 == t0:
         return t0, 0.0
-    m0, m1 = SPEEDS[i] * dur, SPEEDS[i + 1] * dur
+    m0, m1 = speeds[i] * dur, speeds[i + 1] * dur
     s2, s3 = s * s, s * s * s
     t = (2 * s3 - 3 * s2 + 1) * t0 + (s3 - 2 * s2 + s) * m0 + (-2 * s3 + 3 * s2) * t1 + (s3 - s2) * m1
     dt = (6 * s2 - 6 * s) * t0 + (3 * s2 - 4 * s + 1) * m0 + (-6 * s2 + 6 * s) * t1 + (3 * s2 - 2 * s) * m1
@@ -947,7 +947,7 @@ def moon_inset(world, st, size):
     E, M, Rm = st["E"], st["M"], st["Rm"]
     dist = np.linalg.norm(M - E)
     fov = math.degrees(2 * math.atan(Rm / dist) / 0.72)
-    cam = Camera(E, M, fov, size, size, up=(0, 0, -1) if HEMI_SOUTH else (0, 0, 1))
+    cam = Camera(E, M, fov, size, size, up=(0, 0, -1) if Active.hemi_south else (0, 0, 1))
     sun_r = np.linalg.norm(E) * math.tan(SUN_ANG)      # real apparent size of the Sun
     img, _ = render(world, cam, st, sun_r=sun_r)
     return img
@@ -1039,8 +1039,8 @@ def draw_chart(dr, box, xs, ys, xr, yr, fonts, sc, title, xticks, yticks, marker
 
 def draw_line_legend(dr, x, y, fonts, sc):
     """Legend of the equator, tropics and polar circles."""
-    items = [(T["legend_eq"], (255, 255, 255)), (T["legend_trop"], (255, 209, 77)),
-             (T["legend_polar"], (128, 217, 255))]
+    items = [(Active.T["legend_eq"], (255, 255, 255)), (Active.T["legend_trop"], (255, 209, 77)),
+             (Active.T["legend_polar"], (128, 217, 255))]
     for name, col in items:
         dr.line([(x, y), (x + 16 * sc, y)], fill=col, width=max(2, int(2 * sc)))
         text(dr, (x + 21 * sc, y), name, fonts.small, (220, 220, 220), anchor="lm", stroke=1)
@@ -1067,13 +1067,13 @@ def season_names(t: float) -> tuple[str, str]:
     """Seasons of the northern and southern hemispheres at time t."""
     ls = solar_longitude(t)
     i = int(ls // 90) % 4                       # 0 spring(N) 1 summer 2 autumn 3 winter
-    return T["seasons"][i], T["seasons"][(i + 2) % 4]
+    return Active.T["seasons"][i], Active.T["seasons"][(i + 2) % 4]
 
 
 def phase_name(elong: float) -> str:
     """Name of the Moon phase for an elongation in radians."""
     i = int(((math.degrees(elong) + 22.5) % 360) // 45)
-    return T["phases"][i]
+    return Active.T["phases"][i]
 
 
 def solar_eclipse_now(st: dict) -> bool:
@@ -1120,9 +1120,9 @@ def draw_guides(img, zb, cam, st):
         s_dir = st["sun_dir"]
         draw_line3d(img, zb, cam, line_pts(st["M"], st["M"] - s_dir * 15, 2500), (1.0, 0.55, 0.15),
                     0.85 * xp, width=2, dash=25)
-        xp_labels = [(E + nd * 13.6, T["node_line"], (255, 160, 220)),
-                     (E + perp * 12.9, T["ecliptic"], (140, 180, 255)),
-                     (st["M"] - s_dir * 4.5 + np.array([0, 0, 0.9]), T["moon_shadow"], (255, 170, 80))]
+        xp_labels = [(E + nd * 13.6, Active.T["node_line"], (255, 160, 220)),
+                     (E + perp * 12.9, Active.T["ecliptic"], (140, 180, 255)),
+                     (st["M"] - s_dir * 4.5 + np.array([0, 0, 0.9]), Active.T["moon_shadow"], (255, 170, 80))]
     if st["rays"] > 0:
         s = st["sun_dir"]
         a = norm(np.cross(s, [0, 0, 1])); b = np.cross(a, s)
@@ -1146,8 +1146,8 @@ def draw_geo_markers(dr, cam, zb, st, fonts, w, m, sc):
     pos_s = marker(dr, cam, zb, E + st["sun_dir"] * Re * 1.003)
     if pos_s:
         sun_mark(dr, pos_s[0], pos_s[1], 6 * sc, sc)
-        text(dr, (pos_s[0], pos_s[1] - 9 * sc), T["subsolar"], fonts.label, (255, 220, 80), anchor="md")
-    name, clat, clon = CITY
+        text(dr, (pos_s[0], pos_s[1] - 9 * sc), Active.T["subsolar"], fonts.label, (255, 220, 80), anchor="md")
+    name, clat, clon = Active.city
     pc, _ = surface_point(st, math.radians(clat), math.radians(clon))
     pos_c = marker(dr, cam, zb, pc)
     if pos_c:
@@ -1160,7 +1160,7 @@ def draw_geo_markers(dr, cam, zb, st, fonts, w, m, sc):
     cw, ch = int(250 * sc), int(120 * sc)
     bx = [w - m - cw, m + int(78 * sc), w - m, m + int(78 * sc) + ch]
     draw_chart(dr, bx, hours, el, (0, 24), (-70, 90), fonts, sc,
-               T["elev_chart"].format(city=name, date=date_label(st["t"]).split(" · ")[0]),
+               Active.T["elev_chart"].format(city=name, date=date_label(st["t"]).split(" · ")[0]),
                [(v, f"{v:02d}h") for v in (0, 6, 12, 18, 24)], [(0, "0°"), (45, "45°"), (90, "90°")],
                marker_x=(st["t"] % 1) * 24, bands=TWILIGHT_COLORS)
     draw_line_legend(dr, bx[0], bx[3] + 28 * sc, fonts, sc)
@@ -1176,14 +1176,14 @@ def draw_eclipse_labels(dr, cam, st, xp_labels, fonts, w, h, m, sc):
         elong = (math.degrees(st["elong"]) + 180) % 360 - 180
         if abs(elong) < 25:
             rel = st["M"] - st["E"]
-            msg = T["hit"] if solar_eclipse_now(st) else (T["miss_above"] if rel[2] > 0 else T["miss_below"])
+            msg = Active.T["hit"] if solar_eclipse_now(st) else (Active.T["miss_above"] if rel[2] > 0 else Active.T["miss_below"])
             text(dr, (w / 2, h - m - int(40 * sc)), msg, fonts.info, (255, 210, 120), anchor="md")
 
 
 def draw_orbit_labels(dr, cam, fonts, sc):
     """Perihelion, aphelion and the season labels on the orbit (act 3)."""
     # labels placed towards the inside of the orbit (clear of the season labels)
-    for tt, name in [(T_PERI + YEAR, T["perihelion"]), (T_PERI + YEAR / 2, T["aphelion"])]:
+    for tt, name in [(T_PERI + YEAR, Active.T["perihelion"]), (T_PERI + YEAR / 2, Active.T["aphelion"])]:
         px, py, z, _ = cam.project(np.stack([earth_pos(tt), np.zeros(3)]))
         if z[0] > 0:
             x, y = float(px[0]), float(py[0])
@@ -1194,7 +1194,7 @@ def draw_orbit_labels(dr, cam, fonts, sc):
                 text(dr, (x + (10 if inward else -10) * sc, y + (22 + 13 * li) * sc), line, fonts.small,
                      (255, 205, 150), anchor="lm" if inward else "rm")
 
-    for i, name in enumerate(T["points"]):
+    for i, name in enumerate(Active.T["points"]):
         p = earth_pos(time_of_longitude(i * 90, 0.0))
         px, py, z, _ = cam.project(p[None])
         if z[0] > 0:
@@ -1205,72 +1205,72 @@ def draw_orbit_labels(dr, cam, fonts, sc):
 
 def draw_titles_and_info(dr, st, fonts, w, h, m, sc):
     """Title and subtitle, date and speed, and the "not to scale" note."""
-    text(dr, (m, m), T[st["title"]], fonts.title)
+    text(dr, (m, m), Active.T[st["title"]], fonts.title)
     sub_key = "s" + st["title"][1:]
     if sub_key == "s3" and st["t"] > T_ACT3 + YEAR * 0.45:
         sub_key = "s3b"
-    text(dr, (m, m + int(30 * sc)), T[sub_key], fonts.sub, (215, 215, 215))
+    text(dr, (m, m + int(30 * sc)), Active.T[sub_key], fonts.sub, (215, 215, 215))
     rate = st["rate"]
     if rate < 1e-4:
         rate_s = ""
     elif rate < 2:
-        rate_s = T["rate_h"].format(v=num(rate * 24, 1 if rate * 24 < 10 else 0))
+        rate_s = Active.T["rate_h"].format(v=num(rate * 24, 1 if rate * 24 < 10 else 0))
     else:
-        rate_s = T["rate_d"].format(v=num(rate, 0 if rate >= 10 else 1))
+        rate_s = Active.T["rate_d"].format(v=num(rate, 0 if rate >= 10 else 1))
     info = date_label(st["t"]) if not st["illus"] else date_label(st["t"]).split(" · ")[0]
     text(dr, (m, h - m - int(20 * sc)), info, fonts.info, anchor="ld")
-    text(dr, (m, h - m), rate_s + ("   · " + T["illustrative"] if st["illus"] else ""),
+    text(dr, (m, h - m), rate_s + ("   · " + Active.T["illustrative"] if st["illus"] else ""),
          fonts.small, (200, 200, 200), anchor="ld")
-    text(dr, (w - m, h - m), T["not_scale"], fonts.small, (170, 170, 170), anchor="rd")
+    text(dr, (w - m, h - m), Active.T["not_scale"], fonts.small, (170, 170, 170), anchor="rd")
 
 
-def draw_moon_inset(out, dr, st, fonts, w, h, m, sc, shadow_visible):
+def draw_moon_inset(out, dr, world, st, fonts, w, h, m, sc, shadow_visible):
     """The Moon seen from the Earth, its phase, and the eclipse messages."""
     isz = int(190 * sc)
-    im = moon_inset(WORLD, st, isz)
+    im = moon_inset(world, st, isz)
     x0, y0 = w - isz - m, m + int(72 * sc)
     out.paste(Image.fromarray((im * 255).astype(np.uint8)), (x0, y0))
     dr.rectangle([x0 - 1, y0 - 1, x0 + isz, y0 + isz], outline=(120, 120, 130))
-    text(dr, (x0 + isz / 2, y0 - 4 * sc), T["moon_inset"], fonts.label, anchor="md")
+    text(dr, (x0 + isz / 2, y0 - 4 * sc), Active.T["moon_inset"], fonts.label, anchor="md")
     day = ((st["t"] - T_NEW) % SYNODIC)
     text(dr, (x0 + isz / 2, y0 + isz + 6 * sc), phase_name(st["elong"]), fonts.info, anchor="ma")
-    text(dr, (x0 + isz / 2, y0 + isz + 26 * sc), T["cycle_day"].format(d=num(day, 1)),
+    text(dr, (x0 + isz / 2, y0 + isz + 26 * sc), Active.T["cycle_day"].format(d=num(day, 1)),
          fonts.small, (200, 200, 200), anchor="ma")
     if lunar_eclipse_now(st):
-        text(dr, (x0 + isz / 2, y0 + isz + 44 * sc), T["lunar_ecl"], fonts.info, (255, 120, 80), anchor="ma")
+        text(dr, (x0 + isz / 2, y0 + isz + 44 * sc), Active.T["lunar_ecl"], fonts.info, (255, 120, 80), anchor="ma")
     if shadow_visible and st["xp"] < 0.5:
-        text(dr, (w / 2, h - m - int(40 * sc)), T["solar_ecl"], fonts.title, (255, 200, 90), anchor="md")
+        text(dr, (w / 2, h - m - int(40 * sc)), Active.T["solar_ecl"], fonts.title, (255, 200, 90), anchor="md")
 
 
-def draw_season_inset(out, dr, st, fonts, w, m, sc):
+def draw_season_inset(out, dr, world, st, fonts, w, m, sc):
     """The Earth seen from the side, the seasons, and the day length over the year."""
     E, Re = st["E"], st["Re"]
     isz = int(190 * sc)
-    im, sun_left, icam, izb = season_inset(WORLD, st, isz)
+    im, sun_left, icam, izb = season_inset(world, st, isz)
     x0, y0 = w - isz - m, m + int(72 * sc)
     out.paste(Image.fromarray((im * 255).astype(np.uint8)), (x0, y0))
     pos_s = marker(dr, icam, izb, E + st["sun_dir"] * Re * 1.01, x0, y0, tol=1.5)
     if pos_s:
         sun_mark(dr, pos_s[0], pos_s[1], 5 * sc, sc)
     dr.rectangle([x0 - 1, y0 - 1, x0 + isz, y0 + isz], outline=(120, 120, 130))
-    text(dr, (x0 + isz / 2, y0 - 4 * sc), T["season_inset"], fonts.label, anchor="md")
-    arrow = ("← " + T["sun"]) if sun_left else (T["sun"] + " →")
+    text(dr, (x0 + isz / 2, y0 - 4 * sc), Active.T["season_inset"], fonts.label, anchor="md")
+    arrow = ("← " + Active.T["sun"]) if sun_left else (Active.T["sun"] + " →")
     text(dr, (x0 + (8 * sc if sun_left else isz - 8 * sc), y0 + isz - 8 * sc), arrow,
          fonts.label, (255, 215, 110), anchor="ld" if sun_left else "rd")
     n_season, s_season = season_names(st["t"])
-    text(dr, (x0 + isz / 2, y0 + isz + 8 * sc), f"{T['north']}: {n_season}", fonts.label, anchor="ma")
-    text(dr, (x0 + isz / 2, y0 + isz + 26 * sc), f"{T['south']}: {s_season}", fonts.label, anchor="ma")
+    text(dr, (x0 + isz / 2, y0 + isz + 8 * sc), f"{Active.T['north']}: {n_season}", fonts.label, anchor="ma")
+    text(dr, (x0 + isz / 2, y0 + isz + 26 * sc), f"{Active.T['south']}: {s_season}", fonts.label, anchor="ma")
     # Day length over the calendar year for the reference city
-    name, clat, _ = CITY
+    name, clat, _ = Active.city
     t_jan1 = 194.0                                   # 1 Jan 2027 (days since 21 Jun 2026)
     days = np.arange(0, 366, 3)
     dl = [day_length(t_jan1 + d, math.radians(clat)) for d in days]
     cw, ch = isz, int(95 * sc)
     by = y0 + isz + int(72 * sc)
     bx = [x0, by, x0 + cw, by + ch]
-    initials = [mo[0].upper() for mo in T["months"]]
+    initials = [mo[0].upper() for mo in Active.T["months"]]
     draw_chart(dr, bx, days, dl, (0, 365), (0, 24), fonts, sc,
-               T["daylen_chart"].format(city=name),
+               Active.T["daylen_chart"].format(city=name),
                [(int(i * 30.4 + 15), initials[i]) for i in range(0, 12, 2)],
                [(0, "0h"), (12, "12h"), (24, "24h")],
                marker_x=(st["t"] - t_jan1) % 365.25,
@@ -1298,9 +1298,9 @@ def compose(world, st, fonts, w, h):
         draw_orbit_labels(dr, cam, fonts, sc)
     draw_titles_and_info(dr, st, fonts, w, h, m, sc)
     if st["inset"] == "moon" and st["Rm"] > 0:
-        draw_moon_inset(out, dr, st, fonts, w, h, m, sc, shadow_visible)
+        draw_moon_inset(out, dr, world, st, fonts, w, h, m, sc, shadow_visible)
     elif st["inset"] == "season":
-        draw_season_inset(out, dr, st, fonts, w, m, sc)
+        draw_season_inset(out, dr, world, st, fonts, w, m, sc)
     return out
 
 
@@ -1332,12 +1332,8 @@ def build_frames(fps: int, speed: float, scenes: set, step: int) -> list:
     return frames[::step]
 
 
-WORLD = None
-
-
 def main() -> None:
     """Command-line entry point."""
-    global T, WORLD
     p = argparse.ArgumentParser(description="Animated Earth–Moon–Sun model (rotation, phases, eclipse, seasons).")
     p.add_argument("--output", "-o", default="earth_moon_sun.mp4", help="video file (.mp4) (default: %(default)s)")
     p.add_argument("--width", type=int, default=960)
@@ -1355,15 +1351,14 @@ def main() -> None:
     p.add_argument("--cache", default=os.path.join(os.path.expanduser("~"), ".cache", "earth_moon_sun"))
     a = p.parse_args()
 
-    global CITY, HEMI_SOUTH
-    T = TEXTS[a.lang or system_language()]
-    CITY = parse_city(a.city)
-    HEMI_SOUTH = (a.hemisphere == "south") or (a.hemisphere == "auto" and CITY[1] < 0)
+    Active.T = TEXTS[a.lang or system_language()]
+    Active.city = parse_city(a.city)
+    Active.hemi_south = (a.hemisphere == "south") or (a.hemisphere == "auto" and Active.city[1] < 0)
     scenes = {int(x) for x in a.scenes.split(",") if x.strip()}
-    WORLD = World(a.cache)
+    world = World(a.cache)
     fonts = Fonts(a.width / 960)
     frames = build_frames(a.fps, a.speed, scenes, max(1, a.step))
-    print(T["rendering"].format(n=len(frames), w=a.width, h=a.height))
+    print(Active.T["rendering"].format(n=len(frames), w=a.width, h=a.height))
 
     writer, folder = None, None
     try:
@@ -1385,7 +1380,7 @@ def main() -> None:
     t_start = time.time()
     for k, (seg, s, theta, w) in enumerate(frames):
         st = frame_state(seg, s, theta, w)
-        img = compose(WORLD, st, fonts, a.width, a.height)
+        img = compose(world, st, fonts, a.width, a.height)
         if writer:
             writer.append_data(np.asarray(img))
         else:
@@ -1402,10 +1397,10 @@ def main() -> None:
             print(f"  {k + 1}/{len(frames)}  ({eta / 60:.1f} min)", flush=True)
     if writer:
         writer.close()
-        print(T["done"].format(path=a.output, s=len(frames) / a.fps,
+        print(Active.T["done"].format(path=a.output, s=len(frames) / a.fps,
                                m=(time.time() - t_start) / 60))
     else:
-        print(T["frames_saved"].format(path=folder))
+        print(Active.T["frames_saved"].format(path=folder))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 [project]
 name = "sun_graph"
-version = "0.1.0"
+version = "1.0.0"
 description = "Sunlight graphs, a world map of solar time vs clock time, and an Earth-Moon-Sun animation"
 readme = "README.md"
 license = { file = "LICENSE" }

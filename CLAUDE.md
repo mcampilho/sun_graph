@@ -27,6 +27,8 @@ ephem, skyfield, cujo script já não existe); não são gerados por nenhum scri
 
 Ao partir ou mudar funções de desenho, comparar antes e depois: o gráfico, os mapas (png e svg) e um vídeo
 curto (`--step 97 --width 480 --height 270`) saem byte a byte iguais quando o refactor não muda nada.
+Sem `global`: o idioma ativo (e, na animação, a cidade e a vista da Lua) está na classe `Active` de cada
+script, definida uma vez em `main()`; os testes que precisam de textos fazem `Active.T = TEXTS["en"]`.
 Os mapas usam `MapLabels` + `place_labels` (a ordem das chamadas é a prioridade dos rótulos).
 
 ## Comandos

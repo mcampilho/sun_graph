@@ -368,8 +368,16 @@ FONT_CANDIDATES = {
     "ar": ["Noto Sans Arabic", "Segoe UI", "Arial", "Tahoma", "Geeza Pro", "DejaVu Sans"],
 }
 
-T = TEXTS["en"]        # active texts (set in main)
-LANG = "en"
+class Active:
+    """Language of the run, set once by main(): its code and its texts."""
+
+    lang = "en"
+    T = TEXTS["en"]
+
+    @classmethod
+    def set_language(cls, code: str) -> None:
+        cls.lang = code
+        cls.T = TEXTS[code]
 
 
 def normalise_language(code: str | None) -> str | None:
@@ -452,7 +460,7 @@ NATIVE_RTL = _native_complex_text()
 
 def shape(text: str) -> str:
     """Arabic needs letter joining and right-to-left ordering (older matplotlib)."""
-    if LANG not in RTL or NATIVE_RTL:
+    if Active.lang not in RTL or NATIVE_RTL:
         return text
     try:
         import arabic_reshaper
@@ -464,7 +472,7 @@ def shape(text: str) -> str:
 
 def say(key: str, **kw) -> None:
     """Prints a message in the active language."""
-    print(T[key].format(**kw))
+    print(Active.T[key].format(**kw))
 
 
 # ----------------------------------------------------------------------------
@@ -684,7 +692,7 @@ def label_points(geom, n: int = 7) -> list:
 
 def country_name_column(countries) -> str:
     """Column of the countries table with the names in the active language."""
-    col = f"NAME_{LANG.upper()}"
+    col = f"NAME_{Active.lang.upper()}"
     return col if col in countries.columns else "NAME"
 
 
@@ -711,7 +719,7 @@ def country_sizes(countries, col, detail, small_font):
 def two_lines(name: str, longer_than: int = 18) -> str:
     """Splits a long name at the space nearest its middle (very long names,
     such as "República Democrática do Congo", in three lines)."""
-    if len(name) <= longer_than or " " not in name or LANG in ("zh", "ja"):
+    if len(name) <= longer_than or " " not in name or Active.lang in ("zh", "ja"):
         return name
     if len(name) > 24:
         return "\n".join(textwrap.wrap(name, 12, break_on_hyphens=False,
@@ -809,11 +817,11 @@ class MapLabels:
 
     def label_islands(self, islands, countries, col):
         """Island groups (Azores, Canaries, Hawaii, Line Islands ...) in italics."""
-        icol = f"NAME_{LANG.upper()}" if f"NAME_{LANG.upper()}" in islands.columns else "NAME"
+        icol = f"NAME_{Active.lang.upper()}" if f"NAME_{Active.lang.upper()}" in islands.columns else "NAME"
         taken = {str(n).lower() for c in ("NAME", "NAME_EN", col) for n in countries[c]}
         groups = islands[(islands["FEATURECLA"] == "Island group") & (islands["SCALERANK"] >= 1)]
         groups = groups[groups.geometry.area < 100]             # not the West Indies, Sunda ...
-        rows = [(names_.get(LANG, names_["en"]), shapely.geometry.Point(x, y).buffer(1.5))
+        rows = [(names_.get(Active.lang, names_["en"]), shapely.geometry.Point(x, y).buffer(1.5))
                 for x, y, names_ in EXTRA_ISLANDS]
         rows += [(str(r[icol] or r["NAME"]), r.geometry)
                  for _, r in groups.sort_values("SCALERANK").iterrows()
@@ -833,12 +841,12 @@ class MapLabels:
 
     def label_marine(self, marine):
         """Oceans (capitals, spaced letters) and the main seas, gulfs and bays."""
-        mcol = f"name_{LANG}" if f"name_{LANG}" in marine.columns else "name"
+        mcol = f"name_{Active.lang}" if f"name_{Active.lang}" in marine.columns else "name"
         sea = marine[marine["scalerank"] <= 2].sort_values("scalerank")
         for _, r in sea.iterrows():
             name = str(r[mcol] or r["name_en"] or r["name"])
             ocean = r["featurecla"] == "ocean"
-            if ocean and LANG not in ("zh", "ja", "ar"):
+            if ocean and Active.lang not in ("zh", "ja", "ar"):
                 name = " ".join(name.upper())      # thin spaces between the letters
             part = main_part(r.geometry)
             spots = [polylabel(part, tolerance=0.5)] + label_points(part, 5)[:4]
@@ -932,23 +940,23 @@ def draw_strip_offsets(ax, pc, lat_lim) -> None:
 
 def draw_titles_and_legend(fig, im, projection, limit, date, zones_map):
     """Titles, colour scale or legend and credits (mirrored for right-to-left languages)."""
-    rtl = LANG in RTL
+    rtl = Active.lang in RTL
     x_text, ha = (0.985, "right") if rtl else (0.015, "left")
-    when = T["mode_date"].format(date=date.isoformat()) if date else T["mode_std"]
+    when = Active.T["mode_date"].format(date=date.isoformat()) if date else Active.T["mode_std"]
     title, subtitle = ("title_zones", "subtitle_zones") if zones_map else ("title", "subtitle")
-    fig.text(x_text, 0.965, shape(T[title].format(proj=T["proj"][projection])),
+    fig.text(x_text, 0.965, shape(Active.T[title].format(proj=Active.T["proj"][projection])),
              fontsize=16, fontweight="bold", color="#222", ha=ha)
-    fig.text(x_text, 0.94, shape(T[subtitle].format(mode=when)),
+    fig.text(x_text, 0.94, shape(Active.T[subtitle].format(mode=when)),
              fontsize=9.5, color="#555", ha=ha)
 
     if zones_map:
-        dst_text = T["dst_date"].format(date=date.isoformat()) if date else T["dst_std"]
+        dst_text = Active.T["dst_date"].format(date=date.isoformat()) if date else Active.T["dst_std"]
         land_colour, sea_colour = zone_colours(np.array([[0.0, 0.0]]), np.array([[True, False]]),
                                                np.zeros((1, 2), bool))[0, :, :3]
         handles = [mpatches.Patch(facecolor=land_colour, edgecolor=HATCH_COLOR, hatch="////",
                                   linewidth=0.4, label=shape(dst_text)),
                    mpatches.Patch(facecolor=sea_colour, edgecolor="#999", linewidth=0.4,
-                                  label=shape(T["sea"]))]
+                                  label=shape(Active.T["sea"]))]
         fig.legend(handles=handles, loc="lower right" if rtl else "lower left",
                    bbox_to_anchor=(0.985 if rtl else 0.015, 0.02), fontsize=8.5,
                    frameon=False, handlelength=2.2, handleheight=1.3)
@@ -958,8 +966,8 @@ def draw_titles_and_legend(fig, im, projection, limit, date, zones_map):
                           ticks=np.arange(-limit, limit + 0.01, 1))
         cb.ax.tick_params(labelsize=8)
         cb.outline.set_linewidth(0.4)
-        cb.set_label(shape(T["cbar"]), fontsize=8.5)
-    fig.text(0.015 if rtl else 0.985, 0.012, shape(T["credit"]), fontsize=7, color="#888",
+        cb.set_label(shape(Active.T["cbar"]), fontsize=8.5)
+    fig.text(0.015 if rtl else 0.985, 0.012, shape(Active.T["credit"]), fontsize=7, color="#888",
              ha="left" if rtl else "right")
 
 
@@ -1000,7 +1008,6 @@ def draw(offset, is_land, antarctica, dst, zones, land, countries, marine, islan
 # ----------------------------------------------------------------------------
 def main() -> None:
     """Command-line entry point."""
-    global T, LANG
     p = argparse.ArgumentParser(
         description="World map of the difference between solar time and official time.")
     p.add_argument("--mode", "-m", default="solar", choices=["solar", "zones"],
@@ -1044,14 +1051,14 @@ def main() -> None:
         return
 
     if a.lang:
-        LANG = normalise_language(a.lang)
-        if LANG is None:
+        lang = normalise_language(a.lang)
+        if lang is None:
             p.error(f"unsupported language '{a.lang}'. Choose from: {', '.join(LANGUAGES)}")
     else:
-        LANG = system_language()
-    T = TEXTS[LANG]
-    setup_fonts(LANG)
-    if LANG in RTL and not NATIVE_RTL:
+        lang = system_language()
+    Active.set_language(lang)
+    setup_fonts(Active.lang)
+    if Active.lang in RTL and not NATIVE_RTL:
         try:
             import arabic_reshaper  # noqa: F401
             import bidi  # noqa: F401

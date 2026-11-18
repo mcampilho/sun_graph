@@ -109,8 +109,16 @@ TEXTS = {
 }
 LANGUAGES = list(TEXTS)
 
-T = TEXTS["en"]        # active texts (set in main)
-LANG = "en"
+class Active:
+    """Language of the run, set once by main(): its code and its texts."""
+
+    lang = "en"
+    T = TEXTS["en"]
+
+    @classmethod
+    def set_language(cls, code: str) -> None:
+        cls.lang = code
+        cls.T = TEXTS[code]
 
 
 def normalise_language(code: str | None) -> str | None:
@@ -158,9 +166,9 @@ def geocode(place: str) -> tuple[str, float, float]:
     """Turns 'City, Country' into (name, lat, lon) using OpenStreetMap."""
     from geopy.geocoders import Nominatim
     geo = Nominatim(user_agent="solar_graph_python")
-    r = geo.geocode(place, language=LANG, timeout=15)
+    r = geo.geocode(place, language=Active.lang, timeout=15)
     if r is None:
-        raise SystemExit(T["not_found"].format(place=place))
+        raise SystemExit(Active.T["not_found"].format(place=place))
     return r.address.split(",")[0].strip(), r.latitude, r.longitude
 
 
@@ -345,12 +353,12 @@ def clock_note(dst: str, shift: float, has_dst: bool) -> str:
     """Text describing a simulated clock, or '' for the legal time."""
     notes = []
     if dst == "off" and has_dst:
-        notes.append(T["sim_no_dst"])
+        notes.append(Active.T["sim_no_dst"])
     elif dst == "on" and not has_dst:
-        notes.append(T["sim_dst"])
+        notes.append(Active.T["sim_dst"])
     if shift:
-        notes.append(T["sim_shift"].format(h=f"{shift:+g}".replace("-", "−")))
-    return T["simulated"] + ": " + ", ".join(notes) if notes else ""
+        notes.append(Active.T["sim_shift"].format(h=f"{shift:+g}".replace("-", "−")))
+    return Active.T["simulated"] + ": " + ", ".join(notes) if notes else ""
 
 
 def draw_year_panel(fig, spec, phase, noon, midnight, dates, i_day, marks, cmap, norm):
@@ -375,7 +383,7 @@ def draw_year_panel(fig, spec, phase, noon, midnight, dates, i_day, marks, cmap,
 
     starts = [(dt.date(year, m, 1) - dates[0]).days for m in range(1, 13)]
     ax.set_xticks(starts)
-    ax.set_xticklabels(T["months"], ha="left", color="#555")
+    ax.set_xticklabels(Active.T["months"], ha="left", color="#555")
     ax.set_yticks(range(0, 24, 2))
     ax.set_yticklabels([f"{h:02d}" for h in range(0, 24, 2)], color="#555")
     ax.set_ylim(0, 24)
@@ -388,9 +396,9 @@ def draw_year_panel(fig, spec, phase, noon, midnight, dates, i_day, marks, cmap,
 def draw_titles(fig, name, lat, lon, tz_name, year, dst, shift, has_dst):
     """Title, coordinates and zone, and the note about a simulated clock."""
     coords = f"{abs(lat):.2f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.2f}°{'E' if lon >= 0 else 'W'}"
-    fig.suptitle(T["title"].format(year=year, name=name), x=0.045, ha="left",
+    fig.suptitle(Active.T["title"].format(year=year, name=name), x=0.045, ha="left",
                  fontsize=15, fontweight="bold", color="#333")
-    fig.text(0.99, 0.955, f"{coords} · {T['zone']} {tz_name}", ha="right",
+    fig.text(0.99, 0.955, f"{coords} · {Active.T['zone']} {tz_name}", ha="right",
              fontsize=9, color="#777")
     note = clock_note(dst, shift, has_dst)
     if note:
@@ -413,7 +421,7 @@ def draw_day_strip(fig, spec, row, day, marks, cmap, norm):
         s.set_visible(False)
     for h in marks:
         mark_line(axd, h, vertical=True)
-    axd.text(-0.15, 0.5, day.strftime("%d\n") + T["months"][day.month - 1],
+    axd.text(-0.15, 0.5, day.strftime("%d\n") + Active.T["months"][day.month - 1],
              transform=axd.transData, ha="right", va="center",
              fontsize=11, color="white", fontweight="bold",
              bbox=dict(boxstyle="square,pad=0.45", fc="#e8175d", ec="none"))
@@ -429,17 +437,17 @@ def draw_legend(fig, spec, row, noon, midnight, marks):
         xk = k * width
         axl.add_patch(plt.Rectangle((xk, 0.82), 0.012, 0.12, color=color,
                                     transform=axl.transAxes))
-        axl.text(xk + 0.018, 0.88, T["phases"][k] + ":", fontsize=9, fontweight="bold",
+        axl.text(xk + 0.018, 0.88, Active.T["phases"][k] + ":", fontsize=9, fontweight="bold",
                  va="center", color="#333", transform=axl.transAxes)
         txt = "\n".join(f"{hhmm(a)} - {hhmm(b)}" for a, b in intervals(row, k)) or "—"
         axl.text(xk + 0.018, 0.72, txt, fontsize=8.5, va="top",
                  color="#333", transform=axl.transAxes)
         tot = int((row == k).sum())
-        axl.text(xk + 0.018, 0.05, f"{T['total']}:  {tot // 60:02d}:{tot % 60:02d}",
+        axl.text(xk + 0.018, 0.05, f"{Active.T['total']}:  {tot // 60:02d}:{tot % 60:02d}",
                  fontsize=8.5, fontweight="bold", color="#333",
                  transform=axl.transAxes)
     xk = 5 * width
-    axl.text(xk, 0.88, T["noon_midnight"], fontsize=9,
+    axl.text(xk, 0.88, Active.T["noon_midnight"], fontsize=9,
              fontweight="bold", va="center", color="#333", transform=axl.transAxes)
     for j, (color, val) in enumerate([(NOON_COLOR, noon), (MIDNIGHT_COLOR, midnight)]):
         yy = 0.66 - j * 0.17
@@ -453,7 +461,7 @@ def draw_legend(fig, spec, row, noon, midnight, marks):
                  transform=axl.transAxes)
         axl.text(xk + 0.026, yy, " · ".join(hhmm(h * 60) for h in marks), fontsize=8.5,
                  va="center", color="#333", transform=axl.transAxes)
-        axl.text(xk + 0.026, yy - 0.13, T["marked"], fontsize=7.5, va="center",
+        axl.text(xk + 0.026, yy - 0.13, Active.T["marked"], fontsize=7.5, va="center",
                  color="#777", transform=axl.transAxes)
 
 
@@ -463,9 +471,9 @@ def draw_polar_note(fig, phase: np.ndarray) -> None:
     never_rises = np.all(phase < 4, axis=1).sum()
     extra = []
     if never_sets:
-        extra.append(T["midnight_sun"].format(n=never_sets))
+        extra.append(Active.T["midnight_sun"].format(n=never_sets))
     if never_rises:
-        extra.append(T["polar_night"].format(n=never_rises))
+        extra.append(Active.T["polar_night"].format(n=never_rises))
     if extra:
         fig.text(0.99, 0.935, " · ".join(extra), ha="right", fontsize=9,
                  color="#777")
@@ -477,9 +485,9 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
     tz = ZoneInfo(tz_name)
     dates, phase, elev, noon, midnight, has_dst = compute(lat, lon, tz, year, dst, shift)
     if dst == "off" and not has_dst:
-        print(T["no_dst_to_remove"].format(tz=tz_name, year=year))
+        print(Active.T["no_dst_to_remove"].format(tz=tz_name, year=year))
     elif dst == "on" and has_dst:
-        print(T["dst_already"].format(tz=tz_name, year=year))
+        print(Active.T["dst_already"].format(tz=tz_name, year=year))
     cmap = ListedColormap(PHASE_COLORS)
     norm = BoundaryNorm(np.arange(-0.5, 5.5), cmap.N)
     i_day = (day - dates[0]).days
@@ -495,7 +503,7 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
 
     if output:
         fig.savefig(output, dpi=130)
-        print(T["saved"].format(path=output))
+        print(Active.T["saved"].format(path=output))
     if show or not output:
         plt.show()
 
@@ -515,7 +523,6 @@ def parse_time(text: str) -> float:
 
 def main() -> None:
     """Command-line entry point."""
-    global T, LANG
     p = argparse.ArgumentParser(description="Yearly sunlight graph.")
     p.add_argument("place", nargs="?", help='city and country, e.g. "Oslo, Norway"')
     p.add_argument("--year", type=int, default=dt.date.today().year)
@@ -541,12 +548,12 @@ def main() -> None:
     a = p.parse_args()
 
     if a.lang:
-        LANG = normalise_language(a.lang)
-        if LANG is None:
+        lang = normalise_language(a.lang)
+        if lang is None:
             p.error(f"unsupported language '{a.lang}'. Choose from: {', '.join(LANGUAGES)}")
     else:
-        LANG = system_language()
-    T = TEXTS[LANG]
+        lang = system_language()
+    Active.set_language(lang)
 
     if a.lat is not None and a.lon is not None:
         name, lat, lon = a.name or a.place or f"{a.lat:.3f}, {a.lon:.3f}", a.lat, a.lon
@@ -564,7 +571,7 @@ def main() -> None:
         today = dt.date.today()
         day = today.replace(year=a.year) if not (today.month == 2 and today.day == 29) else dt.date(a.year, 2, 28)
 
-    print(f"{name}: lat {lat:.4f}, lon {lon:.4f}, {T['zone']} {tz}")
+    print(f"{name}: lat {lat:.4f}, lon {lon:.4f}, {Active.T['zone']} {tz}")
     draw(name, lat, lon, tz, a.year, day, a.output, a.show,
          dst=a.dst, shift=a.shift, marks=sorted(a.mark))
 
