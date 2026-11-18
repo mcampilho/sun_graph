@@ -995,7 +995,8 @@ def main():
     setup_fonts(LANG)
     if LANG in RTL and not NATIVE_RTL:
         try:
-            import arabic_reshaper, bidi  # noqa: F401
+            import arabic_reshaper  # noqa: F401
+            import bidi  # noqa: F401
         except ImportError:
             print("[warning] For correct Arabic text: pip install arabic-reshaper python-bidi")
 

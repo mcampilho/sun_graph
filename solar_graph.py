@@ -487,7 +487,7 @@ def parse_time(text):
         h, _, m = text.partition(":")
         value = int(h) + int(m or 0) / 60
     except ValueError:
-        raise argparse.ArgumentTypeError(f"invalid time '{text}', use HH:MM")
+        raise argparse.ArgumentTypeError(f"invalid time '{text}', use HH:MM") from None
     if not 0 <= value < 24 or not 0 <= int(m or 0) < 60:
         raise argparse.ArgumentTypeError(f"invalid time '{text}', use HH:MM between 00:00 and 23:59")
     return value

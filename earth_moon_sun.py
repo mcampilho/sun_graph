@@ -1085,7 +1085,6 @@ def compose(world, st, fonts, w, h):
         draw_line3d(img, zb, cam, line_pts(st["M"], st["M"] - s_dir * 15, 2500), (1.0, 0.55, 0.15),
                     0.85 * xp, width=2, dash=25)
         rel = st["M"] - E
-        top = norm(np.cross(np.cross(rel, st["moon_axes"][1]), [0, 0, 1]))   # orbit high point direction
         xp_labels = [(E + nd * 13.6, T["node_line"], (255, 160, 220)),
                      (E + perp * 12.9, T["ecliptic"], (140, 180, 255)),
                      (st["M"] - s_dir * 4.5 + np.array([0, 0, 0.9]), T["moon_shadow"], (255, 170, 80))]
