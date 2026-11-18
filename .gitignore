@@ -8,8 +8,8 @@
 # Old version of the animation, to be deleted
 /earth_moon_sun_old.py
 
-# Local experiments (reference maps, test renders)
-/tests/
+# Local experiments (reference maps, comparison renders)
+/experiments/
 
 # Python
 __pycache__/

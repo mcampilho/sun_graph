@@ -140,13 +140,13 @@ def system_language():
             c = normalise_language(locale.windows_locale.get(lcid))
             if c:
                 return c
-        except Exception:
+        except (AttributeError, OSError):
             pass
     try:
         c = normalise_language(locale.getlocale()[0])
         if c:
             return c
-    except Exception:
+    except ValueError:
         pass
     return "en"
 
@@ -349,31 +349,17 @@ def clock_note(dst, shift, has_dst):
     return T["simulated"] + ": " + ", ".join(notes) if notes else ""
 
 
-def draw(name, lat, lon, tz_name, year, day, output, show,
-         dst="legal", shift=0.0, marks=()):
-    tz = ZoneInfo(tz_name)
-    dates, phase, elev, noon, midnight, has_dst = compute(lat, lon, tz, year, dst, shift)
-    if dst == "off" and not has_dst:
-        print(T["no_dst_to_remove"].format(tz=tz_name, year=year))
-    elif dst == "on" and has_dst:
-        print(T["dst_already"].format(tz=tz_name, year=year))
+def draw_year_panel(fig, spec, phase, noon, midnight, dates, i_day, marks, cmap, norm):
+    """Year x day graph: phases, solar noon and midnight, marked times."""
     n = len(dates)
-    cmap = ListedColormap(PHASE_COLORS)
-    norm = BoundaryNorm(np.arange(-0.5, 5.5), cmap.N)
-
-    fig = plt.figure(figsize=(13, 7.6), facecolor="white")
-    gs = GridSpec(3, 1, height_ratios=[6, 0.75, 1.9], hspace=0.28,
-                  left=0.045, right=0.99, top=0.93, bottom=0.02)
-
-    # --- Yearly graph -------------------------------------------------------
-    ax = fig.add_subplot(gs[0])
+    year = dates[0].year
+    ax = fig.add_subplot(spec)
     ax.imshow(phase.T, origin="lower", aspect="auto", cmap=cmap, norm=norm,
               extent=[0, n, 0, 24], interpolation="nearest")
     x = np.arange(n) + 0.5
     plot_with_breaks(ax, x, noon, NOON_COLOR)
     plot_with_breaks(ax, x, midnight, MIDNIGHT_COLOR)
 
-    i_day = (day - dates[0]).days
     ax.axvline(i_day, color="white", lw=0.9)
     ax.axvline(i_day + 1, color="white", lw=0.9)
 
@@ -383,10 +369,9 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
                 color=MARK_COLOR, fontweight="bold",
                 path_effects=[pe.withStroke(linewidth=2, foreground=MARK_EDGE)])
 
-    months = T["months"]
     starts = [(dt.date(year, m, 1) - dates[0]).days for m in range(1, 13)]
     ax.set_xticks(starts)
-    ax.set_xticklabels(months, ha="left", color="#555")
+    ax.set_xticklabels(T["months"], ha="left", color="#555")
     ax.set_yticks(range(0, 24, 2))
     ax.set_yticklabels([f"{h:02d}" for h in range(0, 24, 2)], color="#555")
     ax.set_ylim(0, 24)
@@ -394,6 +379,10 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
     ax.tick_params(length=0)
     for s in ax.spines.values():
         s.set_visible(False)
+
+
+def draw_titles(fig, name, lat, lon, tz_name, year, dst, shift, has_dst):
+    """Title, coordinates and zone, and the note about a simulated clock."""
     coords = f"{abs(lat):.2f}°{'N' if lat >= 0 else 'S'}, {abs(lon):.2f}°{'E' if lon >= 0 else 'W'}"
     fig.suptitle(T["title"].format(year=year, name=name), x=0.045, ha="left",
                  fontsize=15, fontweight="bold", color="#333")
@@ -404,9 +393,11 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
         fig.text(0.045, 0.937, note, ha="left", fontsize=9.5, color=NOTE_COLOR,
                  fontweight="bold")
 
-    # --- Strip of the chosen day ---------------------------------------------
-    axd = fig.add_subplot(gs[1])
-    axd.imshow(phase[i_day][None, :], aspect="auto", cmap=cmap, norm=norm,
+
+def draw_day_strip(fig, spec, row, day, marks, cmap, norm):
+    """Strip with the phases of the chosen day."""
+    axd = fig.add_subplot(spec)
+    axd.imshow(row[None, :], aspect="auto", cmap=cmap, norm=norm,
                extent=[0, 24, 0, 1], interpolation="nearest")
     axd.set_xlim(0, 24)
     axd.set_xticks(range(0, 24, 2))
@@ -418,15 +409,16 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
         s.set_visible(False)
     for h in marks:
         mark_line(axd, h, vertical=True)
-    axd.text(-0.15, 0.5, day.strftime("%d\n") + months[day.month - 1],
+    axd.text(-0.15, 0.5, day.strftime("%d\n") + T["months"][day.month - 1],
              transform=axd.transData, ha="right", va="center",
              fontsize=11, color="white", fontweight="bold",
              bbox=dict(boxstyle="square,pad=0.45", fc="#e8175d", ec="none"))
 
-    # --- Legend with times ----------------------------------------------------
-    axl = fig.add_subplot(gs[2])
+
+def draw_legend(fig, spec, row, noon, midnight, marks):
+    """Start and end of each phase of the chosen day, noon, midnight and marks."""
+    axl = fig.add_subplot(spec)
     axl.axis("off")
-    row = phase[i_day]
     width = 1 / 6
     for k in range(5):
         color = PHASE_COLORS[k]
@@ -445,8 +437,7 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
     xk = 5 * width
     axl.text(xk, 0.88, T["noon_midnight"], fontsize=9,
              fontweight="bold", va="center", color="#333", transform=axl.transAxes)
-    for j, (color, val) in enumerate([(NOON_COLOR, noon[i_day]),
-                                      (MIDNIGHT_COLOR, midnight[i_day])]):
+    for j, (color, val) in enumerate([(NOON_COLOR, noon), (MIDNIGHT_COLOR, midnight)]):
         yy = 0.66 - j * 0.17
         axl.plot([xk, xk + 0.02], [yy, yy], color=color, lw=1.6,
                  transform=axl.transAxes)
@@ -461,7 +452,9 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
         axl.text(xk + 0.026, yy - 0.13, T["marked"], fontsize=7.5, va="center",
                  color="#777", transform=axl.transAxes)
 
-    # Midnight sun / polar night note
+
+def draw_polar_note(fig, phase):
+    """Number of days with midnight sun and of days without sunrise."""
     never_sets = np.all(phase == 4, axis=1).sum()
     never_rises = np.all(phase < 4, axis=1).sum()
     extra = []
@@ -472,6 +465,28 @@ def draw(name, lat, lon, tz_name, year, day, output, show,
     if extra:
         fig.text(0.99, 0.935, " · ".join(extra), ha="right", fontsize=9,
                  color="#777")
+
+
+def draw(name, lat, lon, tz_name, year, day, output, show,
+         dst="legal", shift=0.0, marks=()):
+    tz = ZoneInfo(tz_name)
+    dates, phase, elev, noon, midnight, has_dst = compute(lat, lon, tz, year, dst, shift)
+    if dst == "off" and not has_dst:
+        print(T["no_dst_to_remove"].format(tz=tz_name, year=year))
+    elif dst == "on" and has_dst:
+        print(T["dst_already"].format(tz=tz_name, year=year))
+    cmap = ListedColormap(PHASE_COLORS)
+    norm = BoundaryNorm(np.arange(-0.5, 5.5), cmap.N)
+    i_day = (day - dates[0]).days
+
+    fig = plt.figure(figsize=(13, 7.6), facecolor="white")
+    gs = GridSpec(3, 1, height_ratios=[6, 0.75, 1.9], hspace=0.28,
+                  left=0.045, right=0.99, top=0.93, bottom=0.02)
+    draw_year_panel(fig, gs[0], phase, noon, midnight, dates, i_day, marks, cmap, norm)
+    draw_titles(fig, name, lat, lon, tz_name, year, dst, shift, has_dst)
+    draw_day_strip(fig, gs[1], phase[i_day], day, marks, cmap, norm)
+    draw_legend(fig, gs[2], phase[i_day], noon[i_day], midnight[i_day], marks)
+    draw_polar_note(fig, phase)
 
     if output:
         fig.savefig(output, dpi=130)

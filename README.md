@@ -17,7 +17,7 @@ falling back to English.
 
 ## Installation
 
-Python 3.9 or newer. Install the packages for the script you want to run:
+Python 3.10 or newer. Install the packages for the script you want to run:
 
 ```bash
 # solar_graph.py
@@ -225,6 +225,20 @@ python earth_moon_sun.py --city "-8.84,13.23,Luanda"
 The full video (about 97 s, 2900 frames) takes a while to render, roughly
 20 minutes at 960×540 on a desktop PC; use `--step` and `--scenes` while
 experimenting.
+
+---
+
+## Development
+
+```bash
+pip install -e ".[all,dev]"
+ruff check .
+python -m pytest
+```
+
+The tests cover the calculations (Sun position, daylight-saving rules, time
+zones, island joining ...) and run without internet. GitHub Actions runs `ruff`
+and the tests on Linux and Windows.
 
 ---
 

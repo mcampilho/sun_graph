@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Sunlight graphs, a world map of solar time vs clock time, and an Earth-Moon-Sun animation"
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [{ name = "Miguel Campilho" }]
 dependencies = ["numpy", "matplotlib"]
 
@@ -13,17 +13,22 @@ graph = ["geopy", "timezonefinder", "tzdata"]
 map = ["scipy", "cartopy", "geopandas", "rasterio", "shapely", "tzdata"]
 animation = ["pillow", "imageio", "imageio-ffmpeg"]
 all = ["sun_graph[graph,map,animation]"]
+dev = ["pytest", "ruff"]
 
 [project.urls]
 Homepage = "https://github.com/mcampilho/sun_graph"
 
 # The three scripts are run directly; this file only declares metadata,
 # dependencies and tool settings.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [tool.ruff]
 line-length = 120
-target-version = "py39"
-extend-exclude = ["earth_moon_sun_old.py", "tests"]
+target-version = "py310"
+extend-exclude = ["experiments"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B"]
-ignore = ["E501", "E702", "E731"]
+ignore = ["E501", "E702", "E731", "B905"]

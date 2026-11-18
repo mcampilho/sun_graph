@@ -19,7 +19,7 @@ O código, os comentários e as opções da linha de comandos estão em inglês.
 
 ## Instalação
 
-Python 3.9 ou mais recente. Instale os pacotes do script que quer usar:
+Python 3.10 ou mais recente. Instale os pacotes do script que quer usar:
 
 ```bash
 # solar_graph.py
@@ -227,6 +227,20 @@ python earth_moon_sun.py --city "São Paulo" --lang pt        # a Lua vista do h
 O vídeo completo (cerca de 97 s, 2900 imagens) demora a renderizar, cerca de
 20 minutos a 960×540 num PC de secretária; use `--step` e `--scenes` enquanto
 experimenta.
+
+---
+
+## Desenvolvimento
+
+```bash
+pip install -e ".[all,dev]"
+ruff check .
+python -m pytest
+```
+
+Os testes cobrem os cálculos (posição do Sol, regras da hora de verão, fusos
+horários, junção de ilhas ...) e correm sem internet. O GitHub Actions corre o
+`ruff` e os testes em Linux e Windows.
 
 ---
 
