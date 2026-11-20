@@ -18,11 +18,21 @@ dev = ["pytest", "ruff"]
 [project.urls]
 Homepage = "https://github.com/mcampilho/sun_graph"
 
-# The three scripts are run directly; this file only declares metadata,
-# dependencies and tool settings.
+# The three scripts live in src/sun_graph/. They can be run directly
+# (python src/sun_graph/solar_graph.py ...) or, after `pip install .`,
+# with the commands below.
+[project.scripts]
+solar_graph = "sun_graph.solar_graph:main"
+solar_time_map = "sun_graph.solar_time_map:main"
+earth_moon_sun = "sun_graph.earth_moon_sun:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src/sun_graph"]
 
 [tool.ruff]
 line-length = 120

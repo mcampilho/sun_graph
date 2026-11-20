@@ -7,24 +7,19 @@ para o atalho da Microsoft Store e então o Python real responde como `python`.
 
 | Script | O que gera | Saída típica |
 |---|---|---|
-| `solar_graph.py` | Gráfico anual de luz solar de um local: dia, crepúsculos civil/náutico/astronómico, noite, meio-dia e meia-noite solares, faixa detalhada de um dia. Elevação do Sol calculada minuto a minuto (funciona em latitudes polares). Textos em inglês ou português (`--lang en/pt`). Comparação de horários: `--mark HH:MM` (linhas tracejadas, repetível), `--dst legal/off/on` (hora de verão real, desligada, ou simulada onde não existe — regra europeia a norte, out→abr a sul; ver `simulated_dst`) e `--shift ±H` (muda a hora padrão); tudo em `local_offsets`, e a nota "Simulação" aparece a vermelho por baixo do título. Antes chamava-se `grafico_sol.py` (em português); sem estas opções e com `--lang pt` gera imagens idênticas às do original. | `images/solar_graph_tromso_{en,pt}.png`, `images/solar_graph_lisboa_{en,pt}.png` (`--day 06-21 --mark 08:30 --mark 17:30 --dst off`) |
-| `solar_time_map.py` | Mapa mundial "hora solar média − hora oficial" (vermelho = relógio adiantado, azul = atrasado). Textos e nomes de países em 10 idiomas (`--lang`; `--lang pt` para português). Substituiu a versão original só em português, `mapa_hora_solar.py`, já apagada. `--mode zones` gera antes um mapa clássico dos fusos (tipo Wikipédia): cor pastel por desvio (`zone_colours`, mais clara no mar), riscado onde há hora de verão (ou, com `--date`, onde está em vigor), cada parte em terra de um fuso com rótulo próprio, nomes de oceanos/mares/baías (Natural Earth `marine.geojson`, `name_<lang>`) e, nas projeções cilíndricas, a fila de desvios das faixas por baixo do mapa. | `solar_time_map.png` (padrão), `time_zones_map.png` (`--mode zones`), `images/time_zones_map_{en,pt}.png` (`--mode zones -p miller`), `equal-earth.png`, `miller.png`, `mapa_pt_robinson.png`, `exemplos_zh_ar_ja_ru.png` |
+| `solar_graph.py` | Gráfico anual de luz solar de um local: dia, crepúsculos civil/náutico/astronómico, noite, meio-dia e meia-noite solares, faixa detalhada de um dia. Elevação do Sol calculada minuto a minuto (funciona em latitudes polares). Textos em inglês ou português (`--lang en/pt`). Comparação de horários: `--mark HH:MM` (linhas tracejadas, repetível), `--dst legal/off/on` (hora de verão real, desligada, ou simulada onde não existe — regra europeia a norte, out→abr a sul; ver `simulated_dst`) e `--shift ±H` (muda a hora padrão); tudo em `local_offsets`, e a nota "Simulação" aparece a vermelho por baixo do título. Antes chamava-se `grafico_sol.py` (em português); sem estas opções e com `--lang pt` gera imagens idênticas às do original. | `docs/images/solar_graph_tromso_{en,pt}.png`, `docs/images/solar_graph_lisboa_{en,pt}.png` (`--day 06-21 --mark 08:30 --mark 17:30 --dst off`) |
+| `solar_time_map.py` | Mapa mundial "hora solar média − hora oficial" (vermelho = relógio adiantado, azul = atrasado). Textos e nomes de países em 10 idiomas (`--lang`; `--lang pt` para português). Substituiu a versão original só em português, `mapa_hora_solar.py`, já apagada. `--mode zones` gera antes um mapa clássico dos fusos (tipo Wikipédia): cor pastel por desvio (`zone_colours`, mais clara no mar), riscado onde há hora de verão (ou, com `--date`, onde está em vigor), cada parte em terra de um fuso com rótulo próprio, nomes de oceanos/mares/baías (Natural Earth `marine.geojson`, `name_<lang>`) e, nas projeções cilíndricas, a fila de desvios das faixas por baixo do mapa. | `solar_time_map.png` (padrão), `time_zones_map.png` (`--mode zones`), `docs/images/time_zones_map_{en,pt}.png` (`--mode zones -p miller`), `equal-earth.png`, `miller.png`, `mapa_pt_robinson.png`, `exemplos_zh_ar_ja_ru.png` |
 | `earth_moon_sun.py` | Animação Terra · Lua · Sol (3 atos: rotação de 24 h, mês sinódico com eclipses e órbita inclinada da Lua, ano em órbita kepleriana com estações). Ray tracer em numpy. Textos `--lang en/pt`. Antes chamava-se `earth_moon_sun_v2.py`; a versão anterior, mais simples, foi apagada. | `earth_moon_sun.mp4` (padrão); `earth_moon_sun_v2.mp4` é o vídeo completo em português desta versão, e o `earth_moon_sun.mp4` que existe é da versão antiga |
 
 Documentação para partilhar: `README.md` (inglês) e `README.pt.md` (português europeu), com ligações
 entre si; manter os dois sincronizados ao mudar opções ou comportamento. As imagens dos READMEs estão em
-`images/` (uma versão `_en` e outra `_pt` de cada): gráfico de Tromsø (`--year 2026 --day 12-21`),
+`docs/images/` (uma versão `_en` e outra `_pt` de cada): gráfico de Tromsø (`--year 2026 --day 12-21`),
 mapa Equal Earth e um frame do eclipse solar da animação (frame 36 de
 `--scenes 2 --step 15 --lang en`; frame 900 de `earth_moon_sun_v2.mp4`, que está em português).
 
 `tests/` tem os testes `pytest` (`python -m pytest`; correm sem internet) e `pyproject.toml` os metadados,
 as dependências por script (extras `graph`, `map`, `animation`, `all`, `dev`) e a configuração do `ruff`.
 O CI (`.github/workflows/ci.yml`) corre `ruff` e os testes em Linux e Windows (Python 3.10 e 3.13).
-`experiments/` (ignorada pelo git) guarda mapas de referência (`solar_time_map_reference.png`, `wiki/`,
-projeção Miller, de outra fonte, para comparar fusos e rótulos) e imagens de experiências antigas
-(`sun_graph_output.png`, `tromso_5_bibliotecas.png`, `orig_all.png`: comparação de bibliotecas como astral,
-ephem, skyfield, cujo script já não existe); não são gerados por nenhum script atual.
-
 Ao partir ou mudar funções de desenho, comparar antes e depois: o gráfico, os mapas (png e svg) e um vídeo
 curto (`--step 97 --width 480 --height 270`) saem byte a byte iguais quando o refactor não muda nada.
 Sem `global`: o idioma ativo (e, na animação, a cidade e a vista da Lua) está na classe `Active` de cada
@@ -36,20 +31,20 @@ Os mapas usam `MapLabels` + `place_labels` (a ordem das chamadas é a prioridade
 ```bash
 # solar_graph.py
 pip install numpy matplotlib geopy timezonefinder tzdata
-python3 solar_graph.py "Lisboa, Portugal" --lang pt --output lisboa.png
-python3 solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
+python3 src/sun_graph/solar_graph.py "Lisboa, Portugal" --lang pt --output lisboa.png
+python3 src/sun_graph/solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
 
 # solar_time_map.py
 pip install numpy scipy matplotlib cartopy geopandas rasterio shapely tzdata
-python3 solar_time_map.py --lang en                       # gera solar_time_map.png (~40 s)
-python3 solar_time_map.py -p robinson --lang pt --output mapa.png
-python3 solar_time_map.py -p mercator --date 2026-07-01   # com hora de verão
-python3 solar_time_map.py --mode zones -p miller --lang pt  # mapa dos fusos (time_zones_map.png)
+python3 src/sun_graph/solar_time_map.py --lang en                       # gera solar_time_map.png (~40 s)
+python3 src/sun_graph/solar_time_map.py -p robinson --lang pt --output mapa.png
+python3 src/sun_graph/solar_time_map.py -p mercator --date 2026-07-01   # com hora de verão
+python3 src/sun_graph/solar_time_map.py --mode zones -p miller --lang pt  # mapa dos fusos (time_zones_map.png)
 
 # earth_moon_sun
 pip install numpy pillow imageio imageio-ffmpeg
-python3 earth_moon_sun.py --step 10 --output preview.mp4   # pré-visualização rápida
-python3 earth_moon_sun.py --scenes 2 --lang en
+python3 src/sun_graph/earth_moon_sun.py --step 10 --output preview.mp4   # pré-visualização rápida
+python3 src/sun_graph/earth_moon_sun.py --scenes 2 --lang en
 ```
 
 ## Como `solar_time_map.py` atribui os fusos

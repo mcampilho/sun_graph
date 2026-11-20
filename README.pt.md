@@ -40,7 +40,7 @@ descarregados na primeira execução e guardados em `~/.cache/<nome do script>`.
 
 ## `solar_graph.py` — gráfico anual de luz solar
 
-![Gráfico anual de luz solar de Tromsø](images/solar_graph_tromso_pt.png)
+![Gráfico anual de luz solar de Tromsø](docs/images/solar_graph_tromso_pt.png)
 
 Para cada dia de um ano, na hora do relógio local (com hora de verão), o
 gráfico mostra:
@@ -57,15 +57,15 @@ polar) como em qualquer outro lado. Os saltos nas linhas são as mudanças da
 hora de verão.
 
 ```bash
-python solar_graph.py "Lisboa, Portugal" --lang pt
-python solar_graph.py "Reykjavik, Islândia" --year 2026 --day 10-25 --lang pt
-python solar_graph.py "Porto, Portugal" --lang pt --output porto.png
-python solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
+python src/sun_graph/solar_graph.py "Lisboa, Portugal" --lang pt
+python src/sun_graph/solar_graph.py "Reykjavik, Islândia" --year 2026 --day 10-25 --lang pt
+python src/sun_graph/solar_graph.py "Porto, Portugal" --lang pt --output porto.png
+python src/sun_graph/solar_graph.py --lat 69.65 --lon 18.96 --name Tromsø --tz Europe/Oslo --day 12-21
 ```
 
 ### Comparar horários
 
-![Lisboa sem hora de verão, com o horário de trabalho marcado](images/solar_graph_lisboa_pt.png)
+![Lisboa sem hora de verão, com o horário de trabalho marcado](docs/images/solar_graph_lisboa_pt.png)
 
 Três opções ajudam a ver como um horário se ajusta à luz do dia:
 
@@ -84,9 +84,9 @@ Quando o horário é simulado, isso é indicado a vermelho por baixo do título,
 todas as horas do gráfico e da legenda seguem esse horário.
 
 ```bash
-python solar_graph.py "Lisboa, Portugal" --lang pt --mark 08:30 --mark 17:30 --dst off
-python solar_graph.py "Madrid, Espanha" --lang pt --shift -1 --mark 09:00 --mark 18:00
-python solar_graph.py "Brisbane, Austrália" --lang pt --dst on
+python src/sun_graph/solar_graph.py "Lisboa, Portugal" --lang pt --mark 08:30 --mark 17:30 --dst off
+python src/sun_graph/solar_graph.py "Madrid, Espanha" --lang pt --shift -1 --mark 09:00 --mark 18:00
+python src/sun_graph/solar_graph.py "Brisbane, Austrália" --lang pt --dst on
 ```
 
 | Opção | Significado |
@@ -108,7 +108,7 @@ python solar_graph.py "Brisbane, Austrália" --lang pt --dst on
 
 ## `solar_time_map.py` — hora solar vs hora oficial
 
-![Mapa-múndi da diferença entre a hora solar e a hora oficial](images/solar_time_map_pt.png)
+![Mapa-múndi da diferença entre a hora solar e a hora oficial](docs/images/solar_time_map_pt.png)
 
 A cor de cada ponto é
 
@@ -131,15 +131,15 @@ Por omissão o mapa usa a hora padrão (sem hora de verão); `--date` mostra a
 hora legal em vigor num dado dia.
 
 ```bash
-python solar_time_map.py --lang pt                          # Equal Earth
-python solar_time_map.py --projection robinson --lang pt
-python solar_time_map.py -p mercator --date 2026-07-01 --lang pt   # com hora de verão
-python solar_time_map.py -p miller --output miller.png --no-names
+python src/sun_graph/solar_time_map.py --lang pt                          # Equal Earth
+python src/sun_graph/solar_time_map.py --projection robinson --lang pt
+python src/sun_graph/solar_time_map.py -p mercator --date 2026-07-01 --lang pt   # com hora de verão
+python src/sun_graph/solar_time_map.py -p miller --output miller.png --no-names
 ```
 
 ### Mapa dos fusos horários
 
-![Mapa-múndi dos fusos horários](images/time_zones_map_pt.png)
+![Mapa-múndi dos fusos horários](docs/images/time_zones_map_pt.png)
 
 `--mode zones` desenha antes um mapa clássico dos fusos horários: uma cor
 pastel por desvio UTC (as meias horas e os quartos de hora têm cores
@@ -154,9 +154,9 @@ marca onde a hora de verão está em vigor. As outras opções funcionam como
 acima (`--limit` só se aplica ao mapa da hora solar).
 
 ```bash
-python solar_time_map.py --mode zones -p miller --lang pt   # time_zones_map.png
-python solar_time_map.py --mode zones --date 2026-07-01 --lang pt
-python solar_time_map.py --mode zones -p miller --lang pt -o fusos.svg   # mais nomes
+python src/sun_graph/solar_time_map.py --mode zones -p miller --lang pt   # time_zones_map.png
+python src/sun_graph/solar_time_map.py --mode zones --date 2026-07-01 --lang pt
+python src/sun_graph/solar_time_map.py --mode zones -p miller --lang pt -o fusos.svg   # mais nomes
 ```
 
 | Opção | Significado |
@@ -183,7 +183,7 @@ Chinês e japonês precisam de uma fonte CJK (o Windows e o macOS já têm uma).
 
 ## `earth_moon_sun.py` — animação Terra · Lua · Sol
 
-![Imagem do eclipse solar na animação](images/earth_moon_sun_pt.png)
+![Imagem do eclipse solar na animação](docs/images/earth_moon_sun_pt.png)
 
 Um vídeo MP4 em três atos, ligados por movimentos de câmara suaves:
 
@@ -204,12 +204,12 @@ de cidades reais (Natural Earth). Os tamanhos e as distâncias **não estão à
 escala**: à escala real, a Lua e o Sol ficariam longe demais para se verem.
 
 ```bash
-python earth_moon_sun.py --lang pt                           # earth_moon_sun.mp4, 960x540
-python earth_moon_sun.py --step 10 --output preview.mp4      # pré-visualização rápida
-python earth_moon_sun.py --scenes 2 --lang pt                # só o ato da Lua
-python earth_moon_sun.py --width 1920 --height 1080 --output hd.mp4
-python earth_moon_sun.py --city Porto --lang pt
-python earth_moon_sun.py --city "São Paulo" --lang pt        # a Lua vista do hemisfério sul
+python src/sun_graph/earth_moon_sun.py --lang pt                           # earth_moon_sun.mp4, 960x540
+python src/sun_graph/earth_moon_sun.py --step 10 --output preview.mp4      # pré-visualização rápida
+python src/sun_graph/earth_moon_sun.py --scenes 2 --lang pt                # só o ato da Lua
+python src/sun_graph/earth_moon_sun.py --width 1920 --height 1080 --output hd.mp4
+python src/sun_graph/earth_moon_sun.py --city Porto --lang pt
+python src/sun_graph/earth_moon_sun.py --city "São Paulo" --lang pt        # a Lua vista do hemisfério sul
 ```
 
 | Opção | Significado |
